@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+// src/lib.rs
+pub mod cex;
+pub mod common;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+// Re-export common types
+pub use cex::{Binance, Mexc};
+pub use common::{
+    CexExchange, CexPrice, DexAggregator, Exchange, ExchangeTrait, MarketScannerError,
+};
