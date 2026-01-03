@@ -13,7 +13,9 @@ pub enum Exchange {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CexExchange {
     Binance,
+    Bybit,
     MEXC,
+    OKX,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

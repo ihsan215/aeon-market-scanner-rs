@@ -35,6 +35,11 @@ impl ExchangeTrait for Mexc {
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+        if symbol.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "Symbol cannot be empty".to_string(),
+            ));
+        }
         let endpoint = format!("ticker/bookTicker?symbol={}", symbol.to_uppercase());
 
         let ticker: MexcBookTickerResponse = self.get(&endpoint).await?;
