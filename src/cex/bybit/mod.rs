@@ -27,24 +27,13 @@ impl ExchangeTrait for Bybit {
     }
 
     async fn health_check(&self) -> Result<(), MarketScannerError> {
-        // Bybit market/time endpoint for health check (simpler than tickers)
+        // Bybit market/time endpoint - test connectivity to the REST API
         let endpoint = "market/time";
-        let response: serde_json::Value = self.get(endpoint).await?;
+        self.get::<serde_json::Value>(endpoint)
+            .await
+            .map_err(|_| MarketScannerError::HealthCheckFailed)?;
 
-        // Bybit returns retCode 0 for success (note: camelCase in response)
-        if let Some(ret_code) = response["retCode"].as_i64() {
-            if ret_code == 0 {
-                Ok(())
-            } else {
-                let ret_msg = response["retMsg"].as_str().unwrap_or("Unknown error");
-                Err(MarketScannerError::ApiError(format!(
-                    "Bybit health check failed: {} - {}",
-                    ret_code, ret_msg
-                )))
-            }
-        } else {
-            Err(MarketScannerError::HealthCheckFailed)
-        }
+        Ok(())
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {

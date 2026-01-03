@@ -26,6 +26,7 @@ impl ExchangeTrait for Binance {
     }
 
     async fn health_check(&self) -> Result<(), MarketScannerError> {
+        // Binance ping endpoint - test connectivity to the REST API
         let endpoint = "ping";
         self.get::<serde_json::Value>(endpoint)
             .await
@@ -35,11 +36,14 @@ impl ExchangeTrait for Binance {
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+        // Validate symbol is not empty
         if symbol.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
                 "Symbol cannot be empty".to_string(),
             ));
         }
+
+        // Binance uses standard format: BTCUSDT
         let endpoint = format!("ticker/bookTicker?symbol={}", symbol.to_uppercase());
 
         let ticker: BinanceBookTickerResponse = self.get(&endpoint).await?;
