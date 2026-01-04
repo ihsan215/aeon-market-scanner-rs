@@ -18,6 +18,7 @@ pub enum CexExchange {
     OKX,
     Gateio,
     Kucoin,
+    Bitget,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
