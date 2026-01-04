@@ -19,6 +19,7 @@ pub enum CexExchange {
     Gateio,
     Kucoin,
     Bitget,
+    Btcturk,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
