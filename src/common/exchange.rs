@@ -16,6 +16,7 @@ pub enum CexExchange {
     Bybit,
     MEXC,
     OKX,
+    Gateio,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
