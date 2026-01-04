@@ -22,6 +22,7 @@ pub enum CexExchange {
     Btcturk,
     Htx,
     Coinbase,
+    Kraken,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
