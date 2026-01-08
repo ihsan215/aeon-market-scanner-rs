@@ -158,6 +158,19 @@ pub fn format_symbol_for_exchange(
                 )));
             }
         }
+
+        // Bitfinex uses prefix "t": tBTCUSD or tBTCUST
+        // Note: Bitfinex uses BTCUST instead of BTCUSDT
+        CexExchange::Bitfinex => {
+            // Bitfinex requires "t" prefix for trading pairs
+            // Convert USDT to UST for Bitfinex
+            let bitfinex_symbol = if normalized.ends_with("USDT") {
+                normalized.replace("USDT", "UST")
+            } else {
+                normalized
+            };
+            format!("t{}", bitfinex_symbol)
+        }
     };
 
     Ok(formatted)
