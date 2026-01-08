@@ -220,6 +220,29 @@ pub fn format_symbol_for_exchange(
                 )));
             }
         }
+
+        // Crypto.com Exchange uses format: BTC_USDT (underscore separator)
+        CexExchange::Cryptocom => {
+            // Crypto.com Exchange uses underscore separator: BTC_USDT
+            if normalized.len() >= 7 && normalized.ends_with("USDT") {
+                let split_point = normalized.len() - 4;
+                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+            } else if normalized.len() >= 6 && normalized.ends_with("USD") {
+                let split_point = normalized.len() - 3;
+                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+            } else if normalized.len() >= 6 && normalized.ends_with("BTC") {
+                let split_point = normalized.len() - 3;
+                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+            } else if normalized.len() >= 6 {
+                let split_point = normalized.len() - 3;
+                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+            } else {
+                return Err(MarketScannerError::InvalidSymbol(format!(
+                    "Symbol too short for Crypto.com format: {}",
+                    normalized
+                )));
+            }
+        }
     };
 
     Ok(formatted)

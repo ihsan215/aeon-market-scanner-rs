@@ -25,6 +25,7 @@ pub enum CexExchange {
     Kraken,
     Bitfinex,
     Upbit,
+    Cryptocom,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
