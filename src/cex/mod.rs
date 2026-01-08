@@ -10,6 +10,7 @@ pub mod kraken;
 pub mod kucoin;
 pub mod mexc;
 pub mod okx;
+pub mod upbit;
 
 // Re-export
 pub use binance::Binance;
@@ -24,3 +25,4 @@ pub use kraken::Kraken;
 pub use kucoin::Kucoin;
 pub use mexc::Mexc;
 pub use okx::OKX;
+pub use upbit::Upbit;

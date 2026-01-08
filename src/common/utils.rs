@@ -171,6 +171,55 @@ pub fn format_symbol_for_exchange(
             };
             format!("t{}", bitfinex_symbol)
         }
+
+        // Upbit uses format: KRW-BTC, USDT-BTC, BTC-ETH (dash separator, quote-base)
+        CexExchange::Upbit => {
+            // Upbit uses quote-base format with dash: KRW-BTC, USDT-BTC
+            // For BTCUSDT, we convert to USDT-BTC (quote-base)
+            // For BTCUSD, we convert to KRW-BTC (if USD, use KRW as default)
+            if normalized.len() >= 7 && normalized.ends_with("USDT") {
+                // BTCUSDT -> USDT-BTC
+                let split_point = normalized.len() - 4;
+                format!("USDT-{}", &normalized[..split_point])
+            } else if normalized.len() >= 6 && normalized.ends_with("KRW") {
+                // BTCKRW -> KRW-BTC
+                let split_point = normalized.len() - 3;
+                format!("KRW-{}", &normalized[..split_point])
+            } else if normalized.len() >= 6 && normalized.ends_with("USD") {
+                // BTCUSD -> KRW-BTC (Upbit uses KRW instead of USD)
+                let split_point = normalized.len() - 3;
+                format!("KRW-{}", &normalized[..split_point])
+            } else if normalized.len() >= 6 && normalized.ends_with("BTC") {
+                // ETHBTC -> BTC-ETH
+                let split_point = normalized.len() - 3;
+                format!("BTC-{}", &normalized[..split_point])
+            } else if normalized.starts_with("BTC") && normalized.len() >= 7 {
+                // BTCETH -> BTC-ETH (base-quote stays same)
+                let split_point = 3;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 {
+                // Generic: assume last 3-4 chars are quote
+                let split_point = if normalized.len() >= 7 {
+                    normalized.len() - 4
+                } else {
+                    normalized.len() - 3
+                };
+                format!(
+                    "{}-{}",
+                    &normalized[split_point..],
+                    &normalized[..split_point]
+                )
+            } else {
+                return Err(MarketScannerError::InvalidSymbol(format!(
+                    "Symbol too short for Upbit format: {}",
+                    normalized
+                )));
+            }
+        }
     };
 
     Ok(formatted)
