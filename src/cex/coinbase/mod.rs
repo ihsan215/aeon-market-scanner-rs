@@ -3,7 +3,7 @@ mod types;
 use crate::cex::coinbase::types::CoinbaseOrderBookResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -85,27 +85,8 @@ impl ExchangeTrait for Coinbase {
             ));
         }
 
-        // Coinbase uses format: BTC-USD or BTC-USDT (with dash)
-        // Convert BTCUSDT -> BTC-USDT, BTCUSD -> BTC-USD
-        let coinbase_symbol = if symbol.contains('-') {
-            symbol.to_uppercase()
-        } else {
-            let symbol_upper = symbol.to_uppercase();
-            // Find split point: assume last 3-4 chars are quote currency
-            let split_point = if symbol_upper.len() >= 7 && symbol_upper.ends_with("USDT") {
-                symbol.len() - 4
-            } else if symbol_upper.len() >= 6 && symbol_upper.ends_with("USD") {
-                symbol.len() - 3
-            } else if symbol.len() >= 6 {
-                symbol.len() - 3
-            } else {
-                return Err(MarketScannerError::InvalidSymbol(format!(
-                    "Invalid symbol format: {}",
-                    symbol
-                )));
-            };
-            format!("{}-{}", &symbol[..split_point], &symbol[split_point..]).to_uppercase()
-        };
+        // Format symbol for Coinbase
+        let coinbase_symbol = format_symbol_for_exchange(symbol, &CexExchange::Coinbase)?;
 
         // Using orderbook endpoint with level=1 for best bid/ask only
         let endpoint = format!("products/{}/book?level=1", coinbase_symbol);
@@ -185,7 +166,7 @@ impl ExchangeTrait for Coinbase {
 
         let mid_price = find_mid_price(bid, ask);
 
-        // Convert Coinbase symbol format (BTC-USDT) to standard (BTCUSDT)
+        // Convert Coinbase symbol format (BTC-USDT) back to standard (BTCUSDT)
         let standard_symbol = coinbase_symbol.replace("-", "");
 
         Ok(CexPrice {

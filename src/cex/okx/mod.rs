@@ -3,7 +3,7 @@ mod types;
 use crate::cex::okx::types::OkxTickerResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -54,9 +54,9 @@ impl ExchangeTrait for OKX {
                 "Symbol cannot be empty".to_string(),
             ));
         }
-        // OKX uses format: BTC-USDT (with dash)
-        let okx_symbol = symbol.replace("USDT", "-USDT").replace("BTC", "BTC");
-        let endpoint = format!("market/ticker?instId={}", okx_symbol.to_uppercase());
+        // Format symbol for OKX
+        let okx_symbol = format_symbol_for_exchange(symbol, &CexExchange::OKX)?;
+        let endpoint = format!("market/ticker?instId={}", okx_symbol);
 
         let response: OkxTickerResponse = self.get(&endpoint).await?;
 

@@ -1,5 +1,5 @@
 // src/common/utils.rs
-use crate::common::MarketScannerError;
+use crate::common::{CexExchange, MarketScannerError};
 
 // Parse a string to a f64, return a MarketScannerError if the parsing fails
 pub fn parse_f64(value: &str, field_name: &str) -> Result<f64, MarketScannerError> {
@@ -19,4 +19,146 @@ pub fn get_timestamp_millis() -> u64 {
         .timestamp_millis()
         .try_into()
         .unwrap_or(0)
+}
+
+/// Normalize symbol to common format (uppercase, no separators)
+/// Accepts formats like: BTCUSDT, BTC-USDT, BTC_USDT, btcusdt
+pub fn normalize_symbol(symbol: &str) -> String {
+    symbol.to_uppercase().replace('-', "").replace('_', "")
+}
+
+/// Convert common symbol format (e.g., BTCUSDT) to exchange-specific format
+/// Common format: BTCUSDT (uppercase, no separators)
+pub fn format_symbol_for_exchange(
+    symbol: &str,
+    exchange: &CexExchange,
+) -> Result<String, MarketScannerError> {
+    // First normalize the input symbol
+    let normalized = normalize_symbol(symbol);
+
+    // Validate normalized symbol is not empty
+    if normalized.is_empty() {
+        return Err(MarketScannerError::InvalidSymbol(
+            "Symbol cannot be empty".to_string(),
+        ));
+    }
+
+    // Convert to exchange-specific format
+    let formatted = match exchange {
+        // Exchanges using standard format: BTCUSDT (uppercase, no separators)
+        CexExchange::Binance
+        | CexExchange::Bybit
+        | CexExchange::MEXC
+        | CexExchange::Bitget
+        | CexExchange::Btcturk => normalized,
+
+        // Exchanges using dash separator: BTC-USDT
+        CexExchange::OKX | CexExchange::Kucoin => {
+            // Split at USDT (4 chars) or USD (3 chars) or other common quote currencies
+            if normalized.len() >= 7 && normalized.ends_with("USDT") {
+                let split_point = normalized.len() - 4;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 && normalized.ends_with("USD") {
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 {
+                // Generic split: assume last 3 chars are quote currency
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else {
+                return Err(MarketScannerError::InvalidSymbol(format!(
+                    "Symbol too short for {:?} format: {}",
+                    exchange, normalized
+                )));
+            }
+        }
+
+        // Coinbase uses dash separator: BTC-USDT or BTC-USD
+        CexExchange::Coinbase => {
+            if normalized.len() >= 7 && normalized.ends_with("USDT") {
+                let split_point = normalized.len() - 4;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 && normalized.ends_with("USD") {
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 {
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}-{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else {
+                return Err(MarketScannerError::InvalidSymbol(format!(
+                    "Symbol too short for Coinbase format: {}",
+                    normalized
+                )));
+            }
+        }
+
+        // HTX uses lowercase: btcusdt
+        CexExchange::Htx => normalized.to_lowercase(),
+
+        // Kraken uses XBT instead of BTC: XBTUSDT
+        CexExchange::Kraken => {
+            if normalized.starts_with("BTC") {
+                normalized.replace("BTC", "XBT")
+            } else {
+                normalized
+            }
+        }
+
+        // Gate.io uses underscore separator: BTC_USDT
+        CexExchange::Gateio => {
+            if normalized.len() >= 7 && normalized.ends_with("USDT") {
+                let split_point = normalized.len() - 4;
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 && normalized.ends_with("USD") {
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else if normalized.len() >= 6 {
+                let split_point = normalized.len() - 3;
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
+            } else {
+                return Err(MarketScannerError::InvalidSymbol(format!(
+                    "Symbol too short for Gate.io format: {}",
+                    normalized
+                )));
+            }
+        }
+    };
+
+    Ok(formatted)
 }

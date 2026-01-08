@@ -3,7 +3,7 @@ mod types;
 use crate::cex::gateio::types::GateioOrderBookResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -44,24 +44,8 @@ impl ExchangeTrait for Gateio {
             ));
         }
 
-        // Gate.io uses format: BTC_USDT (with underscore)
-        // Convert BTCUSDT -> BTC_USDT
-        let gateio_symbol = if symbol.contains('_') {
-            symbol.to_uppercase()
-        } else {
-            // Find split point: assume last 3-4 chars are quote currency
-            let split_point = if symbol.len() >= 7 && symbol.ends_with("USDT") {
-                symbol.len() - 4
-            } else if symbol.len() >= 6 {
-                symbol.len() - 3
-            } else {
-                return Err(MarketScannerError::InvalidSymbol(format!(
-                    "Invalid symbol format: {}",
-                    symbol
-                )));
-            };
-            format!("{}_{}", &symbol[..split_point], &symbol[split_point..]).to_uppercase()
-        };
+        // Format symbol for Gate.io
+        let gateio_symbol = format_symbol_for_exchange(symbol, &CexExchange::Gateio)?;
 
         // Get order book for bid/ask prices and quantities (limit=1 for best bid/ask only)
         let book_endpoint = format!("spot/order_book?currency_pair={}&limit=1", gateio_symbol);
@@ -84,7 +68,7 @@ impl ExchangeTrait for Gateio {
 
         let mid_price = find_mid_price(bid, ask);
 
-        // Convert Gate.io symbol format (BTC_USDT) to standard (BTCUSDT)
+        // Convert Gate.io symbol format (BTC_USDT) back to standard (BTCUSDT)
         let standard_symbol = gateio_symbol.replace("_", "");
 
         Ok(CexPrice {

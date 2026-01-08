@@ -3,7 +3,7 @@ mod types;
 use crate::cex::kraken::types::KrakenDepthResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -52,13 +52,8 @@ impl ExchangeTrait for Kraken {
             ));
         }
 
-        // Kraken uses special symbol format: BTCUSDT -> XBTUSDT
-        // Convert BTC -> XBT for Kraken
-        let kraken_symbol = if symbol.starts_with("BTC") {
-            symbol.replace("BTC", "XBT").to_uppercase()
-        } else {
-            symbol.to_uppercase()
-        };
+        // Format symbol for Kraken (BTC -> XBT conversion)
+        let kraken_symbol = format_symbol_for_exchange(symbol, &CexExchange::Kraken)?;
 
         // Using Depth endpoint with count=1 for best bid/ask only
         let endpoint = format!("Depth?pair={}&count=1", kraken_symbol);
@@ -153,8 +148,11 @@ impl ExchangeTrait for Kraken {
 
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol back to standard format (XBT -> BTC conversion)
+        let standard_symbol = crate::common::normalize_symbol(symbol);
+
         Ok(CexPrice {
-            symbol: symbol.to_uppercase(),
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

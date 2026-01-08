@@ -3,7 +3,7 @@ mod types;
 use crate::cex::bitget::types::BitgetOrderBookResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -48,12 +48,10 @@ impl ExchangeTrait for Bitget {
             ));
         }
 
-        // Bitget uses standard format: BTCUSDT
+        // Format symbol for Bitget
+        let bitget_symbol = format_symbol_for_exchange(symbol, &CexExchange::Bitget)?;
         // Using v2 API orderbook endpoint (limit=1 for best bid/ask only)
-        let endpoint = format!(
-            "spot/market/orderbook?symbol={}&limit=1",
-            symbol.to_uppercase()
-        );
+        let endpoint = format!("spot/market/orderbook?symbol={}&limit=1", bitget_symbol);
 
         // First get as JSON value to check code
         let response: serde_json::Value = self.get(&endpoint).await?;
@@ -111,8 +109,11 @@ impl ExchangeTrait for Bitget {
 
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol back to standard format
+        let standard_symbol = crate::common::normalize_symbol(symbol);
+
         Ok(CexPrice {
-            symbol: symbol.to_uppercase(),
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

@@ -3,7 +3,7 @@ mod types;
 use crate::cex::htx::types::HtxOrderBookResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis,
+    format_symbol_for_exchange, get_timestamp_millis,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -49,8 +49,8 @@ impl ExchangeTrait for Htx {
             ));
         }
 
-        // HTX uses lowercase format: btcusdt
-        let htx_symbol = symbol.to_lowercase();
+        // Format symbol for HTX
+        let htx_symbol = format_symbol_for_exchange(symbol, &CexExchange::Htx)?;
         let endpoint = format!("market/depth?symbol={}&type=step0", htx_symbol);
 
         // First get as JSON value to handle errors gracefully
@@ -102,8 +102,11 @@ impl ExchangeTrait for Htx {
 
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol back to standard format
+        let standard_symbol = crate::common::normalize_symbol(symbol);
+
         Ok(CexPrice {
-            symbol: symbol.to_uppercase(),
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

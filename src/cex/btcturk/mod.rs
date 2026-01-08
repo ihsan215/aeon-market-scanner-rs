@@ -3,7 +3,7 @@ mod types;
 use crate::cex::btcturk::types::BtcturkOrderBookResponse;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -49,9 +49,10 @@ impl ExchangeTrait for Btcturk {
             ));
         }
 
-        // BTCTurk uses format: BTCUSDT (standard format)
+        // Format symbol for BTCTurk
+        let btcturk_symbol = format_symbol_for_exchange(symbol, &CexExchange::Btcturk)?;
         // Using orderbook endpoint to get both prices and quantities
-        let endpoint = format!("orderbook?pairSymbol={}&limit=1", symbol.to_uppercase());
+        let endpoint = format!("orderbook?pairSymbol={}&limit=1", btcturk_symbol);
 
         // First get as JSON value to handle errors gracefully
         let response: serde_json::Value = self.get(&endpoint).await?;
@@ -101,8 +102,11 @@ impl ExchangeTrait for Btcturk {
 
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol back to standard format
+        let standard_symbol = crate::common::normalize_symbol(symbol);
+
         Ok(CexPrice {
-            symbol: symbol.to_uppercase(),
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

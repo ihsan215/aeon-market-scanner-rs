@@ -1,7 +1,7 @@
 mod types;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, normalize_symbol, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -43,8 +43,9 @@ impl ExchangeTrait for Binance {
             ));
         }
 
-        // Binance uses standard format: BTCUSDT
-        let endpoint = format!("ticker/bookTicker?symbol={}", symbol.to_uppercase());
+        // Format symbol for Binance
+        let binance_symbol = format_symbol_for_exchange(symbol, &CexExchange::Binance)?;
+        let endpoint = format!("ticker/bookTicker?symbol={}", binance_symbol);
 
         let ticker: BinanceBookTickerResponse = self.get(&endpoint).await?;
 
@@ -54,8 +55,11 @@ impl ExchangeTrait for Binance {
         let ask_qty = parse_f64(&ticker.ask_qty, "ask quantity")?;
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol to standard format
+        let standard_symbol = normalize_symbol(&ticker.symbol);
+
         Ok(CexPrice {
-            symbol: ticker.symbol,
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

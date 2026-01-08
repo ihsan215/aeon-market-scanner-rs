@@ -3,7 +3,7 @@ mod types;
 use crate::cex::bybit::types::BybitTickerData;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, normalize_symbol, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -43,10 +43,11 @@ impl ExchangeTrait for Bybit {
                 "Symbol cannot be empty".to_string(),
             ));
         }
-        // Bybit uses standard format: BTCUSDT
+        // Format symbol for Bybit
+        let bybit_symbol = format_symbol_for_exchange(symbol, &CexExchange::Bybit)?;
         let endpoint = format!(
             "market/tickers?category=spot&symbol={}",
-            symbol.to_uppercase()
+            bybit_symbol
         );
 
         // First get as JSON value to handle errors gracefully
@@ -86,8 +87,11 @@ impl ExchangeTrait for Bybit {
         let ask_qty = parse_f64(&ticker.ask1_size, "ask quantity")?;
         let mid_price = find_mid_price(bid, ask);
 
+        // Normalize symbol to standard format
+        let standard_symbol = normalize_symbol(&ticker.symbol);
+
         Ok(CexPrice {
-            symbol: ticker.symbol.clone(),
+            symbol: standard_symbol,
             mid_price,
             bid_price: bid,
             ask_price: ask,

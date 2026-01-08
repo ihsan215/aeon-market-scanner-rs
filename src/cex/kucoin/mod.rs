@@ -1,7 +1,7 @@
 mod types;
 use crate::common::{
     CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -42,25 +42,8 @@ impl ExchangeTrait for Kucoin {
             ));
         }
 
-        // KuCoin uses format: BTC-USDT (with dash, similar to OKX)
-        // Convert BTCUSDT -> BTC-USDT
-        // For invalid symbols, let the API handle the error
-        let kucoin_symbol = if symbol.contains('-') {
-            symbol.to_uppercase()
-        } else {
-            // Try to split symbol, but don't fail if format is invalid
-            // Let API return error for invalid symbols
-            let split_point = if symbol.len() >= 7 && symbol.ends_with("USDT") {
-                symbol.len() - 4
-            } else if symbol.len() >= 6 {
-                symbol.len() - 3
-            } else {
-                // For very short symbols, try to split at middle
-                // This will likely result in API error, which is fine
-                symbol.len() / 2
-            };
-            format!("{}-{}", &symbol[..split_point], &symbol[split_point..]).to_uppercase()
-        };
+        // Format symbol for KuCoin
+        let kucoin_symbol = format_symbol_for_exchange(symbol, &CexExchange::Kucoin)?;
 
         // Get order book level 1 for bid/ask prices and quantities
         let book_endpoint = format!("market/orderbook/level1?symbol={}", kucoin_symbol);
@@ -104,7 +87,7 @@ impl ExchangeTrait for Kucoin {
 
         let mid_price = find_mid_price(bid, ask);
 
-        // Convert KuCoin symbol format (BTC-USDT) to standard (BTCUSDT)
+        // Convert KuCoin symbol format (BTC-USDT) back to standard (BTCUSDT)
         let standard_symbol = kucoin_symbol.replace("-", "");
 
         Ok(CexPrice {
