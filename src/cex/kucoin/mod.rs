@@ -1,6 +1,6 @@
 mod types;
 use crate::common::{
-    CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
+    CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
     format_symbol_for_exchange, get_timestamp_millis, parse_f64,
 };
 use crate::create_exchange;
@@ -33,7 +33,10 @@ impl ExchangeTrait for Kucoin {
 
         Ok(())
     }
+}
 
+#[async_trait]
+impl CEXTrait for Kucoin {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {

@@ -1,6 +1,6 @@
-use aeon_market_scanner_rs::{Exchange, ExchangeTrait, MarketScannerError};
+use aeon_market_scanner_rs::{CEXTrait, Exchange, MarketScannerError};
 
-pub async fn test_health_check_common<T: ExchangeTrait>(exchange: &T, exchange_name: &str) {
+pub async fn test_health_check_common<T: CEXTrait>(exchange: &T, exchange_name: &str) {
     let result = exchange.health_check().await;
     assert!(
         result.is_ok(),
@@ -10,7 +10,7 @@ pub async fn test_health_check_common<T: ExchangeTrait>(exchange: &T, exchange_n
     println!("{} health check passed", exchange_name);
 }
 
-pub async fn test_get_price_common<T: ExchangeTrait>(
+pub async fn test_get_price_common<T: CEXTrait>(
     exchange: &T,
     symbol: &str,
     expected_exchange: Exchange,
@@ -62,10 +62,7 @@ pub async fn test_get_price_common<T: ExchangeTrait>(
     println!("Exchange: {:?}", price.exchange);
 }
 
-pub async fn test_get_price_invalid_symbol_common<T: ExchangeTrait>(
-    exchange: &T,
-    exchange_name: &str,
-) {
+pub async fn test_get_price_invalid_symbol_common<T: CEXTrait>(exchange: &T, exchange_name: &str) {
     let invalid_symbols = vec!["INVALID123", "XYZABC", "NOTREAL", "FAKESYMBOL"];
 
     for symbol in invalid_symbols {
@@ -107,10 +104,7 @@ pub async fn test_get_price_invalid_symbol_common<T: ExchangeTrait>(
     println!("{} invalid symbol test passed\n", exchange_name);
 }
 
-pub async fn test_get_price_empty_symbol_common<T: ExchangeTrait>(
-    exchange: &T,
-    exchange_name: &str,
-) {
+pub async fn test_get_price_empty_symbol_common<T: CEXTrait>(exchange: &T, exchange_name: &str) {
     let result = exchange.get_price("").await;
 
     assert!(

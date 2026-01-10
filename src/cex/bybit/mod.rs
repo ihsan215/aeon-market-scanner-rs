@@ -2,7 +2,7 @@ mod types;
 
 use crate::cex::bybit::types::BybitTickerData;
 use crate::common::{
-    CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
+    CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
     format_symbol_for_exchange, get_timestamp_millis, normalize_symbol, parse_f64,
 };
 use crate::create_exchange;
@@ -35,7 +35,10 @@ impl ExchangeTrait for Bybit {
 
         Ok(())
     }
+}
 
+#[async_trait]
+impl CEXTrait for Bybit {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {
@@ -45,10 +48,7 @@ impl ExchangeTrait for Bybit {
         }
         // Format symbol for Bybit
         let bybit_symbol = format_symbol_for_exchange(symbol, &CexExchange::Bybit)?;
-        let endpoint = format!(
-            "market/tickers?category=spot&symbol={}",
-            bybit_symbol
-        );
+        let endpoint = format!("market/tickers?category=spot&symbol={}", bybit_symbol);
 
         // First get as JSON value to handle errors gracefully
         let response: serde_json::Value = self.get(&endpoint).await?;

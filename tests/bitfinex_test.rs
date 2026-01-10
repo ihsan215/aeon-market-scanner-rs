@@ -1,5 +1,5 @@
 mod common;
-use aeon_market_scanner_rs::{Bitfinex, CexExchange, Exchange, ExchangeTrait};
+use aeon_market_scanner_rs::{Bitfinex, CEXTrait, CexExchange, Exchange};
 use common::{
     test_get_price_common, test_get_price_empty_symbol_common,
     test_get_price_invalid_symbol_common, test_health_check_common,

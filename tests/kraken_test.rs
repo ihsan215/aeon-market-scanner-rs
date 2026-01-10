@@ -1,6 +1,6 @@
 mod common;
 
-use aeon_market_scanner_rs::{CexExchange, Exchange, ExchangeTrait, Kraken};
+use aeon_market_scanner_rs::{CEXTrait, CexExchange, Exchange, Kraken};
 use common::{
     test_get_price_common, test_get_price_empty_symbol_common,
     test_get_price_invalid_symbol_common, test_health_check_common,

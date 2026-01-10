@@ -2,7 +2,7 @@ mod types;
 
 use crate::cex::htx::types::HtxOrderBookResponse;
 use crate::common::{
-    CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
+    CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
     format_symbol_for_exchange, get_timestamp_millis,
 };
 use crate::create_exchange;
@@ -40,7 +40,10 @@ impl ExchangeTrait for Htx {
             Err(MarketScannerError::HealthCheckFailed)
         }
     }
+}
 
+#[async_trait]
+impl CEXTrait for Htx {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {
@@ -117,4 +120,3 @@ impl ExchangeTrait for Htx {
         })
     }
 }
-

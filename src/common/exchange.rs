@@ -66,6 +66,11 @@ pub trait ExchangeTrait: Send + Sync {
 
     // Trait methods
     async fn health_check(&self) -> Result<(), MarketScannerError>;
+}
+
+// Common Cex Traits
+#[async_trait]
+pub trait CEXTrait: ExchangeTrait {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError>;
 }
 

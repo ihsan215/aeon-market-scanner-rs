@@ -2,7 +2,7 @@ mod types;
 
 use crate::cex::upbit::types::UpbitOrderBookResponse;
 use crate::common::{
-    CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
+    CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
     format_symbol_for_exchange, get_timestamp_millis, normalize_symbol,
 };
 use crate::create_exchange;
@@ -40,7 +40,10 @@ impl ExchangeTrait for Upbit {
 
         Err(MarketScannerError::HealthCheckFailed)
     }
+}
 
+#[async_trait]
+impl CEXTrait for Upbit {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {
