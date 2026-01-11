@@ -2,8 +2,8 @@
 // use crate::create_exchange;
 // use async_trait::async_trait;
 
-// const KYBERSWAP_API_BASE: &str = "https://api.kyberswap.com/v1";
-
+// const KYBERSWAP_API_BASE: &str = "https://aggregator-api.kyberswap.com";
+//
 // create_exchange!(Kyberswap);
 
 // TODO: Added chain names ->
