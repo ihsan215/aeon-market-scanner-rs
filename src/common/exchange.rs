@@ -1,4 +1,4 @@
-use crate::common::{CexPrice, MarketScannerError};
+use crate::common::{CexPrice, DexPrice, MarketScannerError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +72,15 @@ pub trait ExchangeTrait: Send + Sync {
 #[async_trait]
 pub trait CEXTrait: ExchangeTrait {
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError>;
+}
+
+#[async_trait]
+pub trait DEXTrait: ExchangeTrait {
+    async fn get_price(
+        &self,
+        base_token: &crate::dex::chains::Token,
+        quote_token: &crate::dex::chains::Token,
+    ) -> Result<DexPrice, MarketScannerError>;
 }
 
 // CEX MACRO EXPORTS

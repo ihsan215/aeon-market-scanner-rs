@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainId {
     ETHEREUM = 0x1,
     BSC = 0x38,
