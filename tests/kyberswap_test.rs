@@ -1,6 +1,8 @@
 use aeon_market_scanner_rs::dex::chains::{BaseTokens, BscTokens, EthereumTokens, TokenMap};
 use aeon_market_scanner_rs::{DEXTrait, DexAggregator, Exchange, ExchangeTrait, KyberSwap};
 
+const QUOTE_AMOUNT: f64 = 1000.0;
+
 #[tokio::test]
 async fn test_kyberswap_health_check() {
     let exchange = KyberSwap::new();
@@ -31,7 +33,9 @@ async fn test_kyberswap_get_price_ethereum() {
     let tokens = EthereumTokens::new();
     let eth_token = tokens.get(&TokenMap::ETH).unwrap().clone();
     let usdt_token = tokens.get(&TokenMap::USDT).unwrap().clone();
-    let result = exchange.get_price(&eth_token, &usdt_token).await;
+    let result = exchange
+        .get_price(&eth_token, &usdt_token, QUOTE_AMOUNT)
+        .await;
 
     if let Err(e) = &result {
         println!("Error getting price: {:?}", e);
@@ -93,6 +97,10 @@ async fn test_kyberswap_get_price_ethereum() {
             "Amount In: {}, Amount Out: {}",
             bid_route.amount_in, bid_route.amount_out
         );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            bid_route.amount_in_wei, bid_route.amount_out_wei
+        );
     }
     if let Some(ref ask_route) = price.ask_route_summary {
         println!("\n=== ASK Route Summary ===");
@@ -103,6 +111,10 @@ async fn test_kyberswap_get_price_ethereum() {
         println!(
             "Amount In: {}, Amount Out: {}",
             ask_route.amount_in, ask_route.amount_out
+        );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            ask_route.amount_in_wei, ask_route.amount_out_wei
         );
     }
 
@@ -131,7 +143,9 @@ async fn test_kyberswap_get_price_base() {
     let tokens = BaseTokens::new();
     let eth_token = tokens.get(&TokenMap::ETH).unwrap().clone();
     let usdc_token = tokens.get(&TokenMap::USDC).unwrap().clone();
-    let result = exchange.get_price(&eth_token, &usdc_token).await;
+    let result = exchange
+        .get_price(&eth_token, &usdc_token, QUOTE_AMOUNT)
+        .await;
 
     assert!(
         result.is_ok(),
@@ -170,6 +184,10 @@ async fn test_kyberswap_get_price_base() {
             "Amount In: {}, Amount Out: {}",
             bid_route.amount_in, bid_route.amount_out
         );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            bid_route.amount_in_wei, bid_route.amount_out_wei
+        );
     }
     if let Some(ref ask_route) = price.ask_route_summary {
         println!("\n=== ASK Route Summary ===");
@@ -181,16 +199,24 @@ async fn test_kyberswap_get_price_base() {
             "Amount In: {}, Amount Out: {}",
             ask_route.amount_in, ask_route.amount_out
         );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            ask_route.amount_in_wei, ask_route.amount_out_wei
+        );
     }
 }
 
 #[tokio::test]
 async fn test_kyberswap_get_price_bsc() {
+    println!("===== BSC CHAIN TEST =======");
+
     let exchange = KyberSwap::new();
     let tokens = BscTokens::new();
     let bnb_token = tokens.get(&TokenMap::BNB).unwrap().clone();
     let usdt_token = tokens.get(&TokenMap::USDT).unwrap().clone();
-    let result = exchange.get_price(&bnb_token, &usdt_token).await;
+    let result = exchange
+        .get_price(&bnb_token, &usdt_token, QUOTE_AMOUNT)
+        .await;
 
     assert!(result.is_ok(), "Should be able to get BNBUSDT price on BSC");
     let price = result.unwrap();
@@ -226,6 +252,10 @@ async fn test_kyberswap_get_price_bsc() {
             "Amount In: {}, Amount Out: {}",
             bid_route.amount_in, bid_route.amount_out
         );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            bid_route.amount_in_wei, bid_route.amount_out_wei
+        );
     }
     if let Some(ref ask_route) = price.ask_route_summary {
         println!("\n=== ASK Route Summary ===");
@@ -236,6 +266,10 @@ async fn test_kyberswap_get_price_bsc() {
         println!(
             "Amount In: {}, Amount Out: {}",
             ask_route.amount_in, ask_route.amount_out
+        );
+        println!(
+            "Amount In Wei: {}, Amount Out Wei: {}",
+            ask_route.amount_in_wei, ask_route.amount_out_wei
         );
     }
 
@@ -265,7 +299,9 @@ async fn test_kyberswap_get_price_different_chains() {
     let base_tokens = BaseTokens::new();
     let eth_token = eth_tokens.get(&TokenMap::ETH).unwrap().clone();
     let usdc_token = base_tokens.get(&TokenMap::USDC).unwrap().clone();
-    let result = exchange.get_price(&eth_token, &usdc_token).await;
+    let result = exchange
+        .get_price(&eth_token, &usdc_token, QUOTE_AMOUNT)
+        .await;
 
     assert!(
         result.is_err(),

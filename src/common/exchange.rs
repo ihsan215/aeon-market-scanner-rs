@@ -80,6 +80,7 @@ pub trait DEXTrait: ExchangeTrait {
         &self,
         base_token: &crate::dex::chains::Token,
         quote_token: &crate::dex::chains::Token,
+        quote_amount: f64,
     ) -> Result<DexPrice, MarketScannerError>;
 }
 

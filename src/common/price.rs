@@ -39,4 +39,6 @@ pub struct DexRouteSummary {
     pub token_out: String,
     pub amount_in: String,
     pub amount_out: String,
+    pub amount_in_wei: f64,
+    pub amount_out_wei: f64,
 }
