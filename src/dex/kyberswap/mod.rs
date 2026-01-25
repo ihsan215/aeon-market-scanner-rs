@@ -136,10 +136,10 @@ impl DEXTrait for KyberSwap {
         let bid_route_summary = DexRouteSummary {
             token_in: bid_data.route_summary.token_in.clone(),
             token_out: bid_data.route_summary.token_out.clone(),
-            amount_in: bid_data.route_summary.amount_in.clone(),
-            amount_out: bid_data.route_summary.amount_out.clone(),
-            amount_in_wei: wei_to_eth(&bid_data.route_summary.amount_in, quote_token.decimal)?,
-            amount_out_wei: wei_to_eth(&bid_data.route_summary.amount_out, base_token.decimal)?,
+            amount_in: wei_to_eth(&bid_data.route_summary.amount_in, quote_token.decimal)?,
+            amount_out: wei_to_eth(&bid_data.route_summary.amount_out, base_token.decimal)?,
+            amount_in_wei: bid_data.route_summary.amount_in.clone(),
+            amount_out_wei: bid_data.route_summary.amount_out.clone(),
         };
 
         let bid_route_data = serde_json::to_value(&bid_data).ok();
@@ -192,10 +192,10 @@ impl DEXTrait for KyberSwap {
         let ask_route_summary = DexRouteSummary {
             token_in: ask_data.route_summary.token_in.clone(),
             token_out: ask_data.route_summary.token_out.clone(),
-            amount_in: ask_data.route_summary.amount_in.clone(),
-            amount_out: ask_data.route_summary.amount_out.clone(),
-            amount_in_wei: wei_to_eth(&ask_data.route_summary.amount_in, base_token.decimal)?,
-            amount_out_wei: wei_to_eth(&ask_data.route_summary.amount_out, quote_token.decimal)?,
+            amount_in_wei: ask_data.route_summary.amount_in.clone(),
+            amount_out_wei: ask_data.route_summary.amount_out.clone(),
+            amount_in: wei_to_eth(&ask_data.route_summary.amount_in, base_token.decimal)?,
+            amount_out: wei_to_eth(&ask_data.route_summary.amount_out, quote_token.decimal)?,
         };
 
         // Store full route data as JSON

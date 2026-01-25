@@ -12,3 +12,4 @@ tokio = { version = "1.48.0", features = ["full"] }
 async-trait = "0.1.89"
 chrono = "0.4"
 rust_decimal = { version = "1.36", features = ["serde-with-str"] }
+futures = "0.3"

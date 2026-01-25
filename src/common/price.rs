@@ -37,8 +37,8 @@ pub struct DexPrice {
 pub struct DexRouteSummary {
     pub token_in: String,
     pub token_out: String,
-    pub amount_in: String,
-    pub amount_out: String,
-    pub amount_in_wei: f64,
-    pub amount_out_wei: f64,
+    pub amount_in: f64,
+    pub amount_out: f64,
+    pub amount_in_wei: String,
+    pub amount_out_wei: String,
 }

@@ -1,6 +1,7 @@
 pub mod cex;
 pub mod common;
 pub mod dex;
+pub mod scanner;
 
 // Re-export common types
 pub use cex::{
@@ -13,3 +14,4 @@ pub use common::{
     MarketScannerError,
 };
 pub use dex::KyberSwap;
+pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};
