@@ -1,9 +1,11 @@
 mod scanner_common;
 
 use aeon_market_scanner_rs::DexAggregator;
-use aeon_market_scanner_rs::dex::chains::{BscTokens, TokenMap};
+
 use aeon_market_scanner_rs::scanner::{ArbitrageScanner, PriceData};
-use scanner_common::{QUOTE_AMOUNT, TEST_SYMBOL, get_all_cex_exchanges};
+use scanner_common::{
+    QUOTE_AMOUNT, TEST_SYMBOL, create_bsc_bnb, create_bsc_usdt, get_all_cex_exchanges,
+};
 
 #[tokio::test]
 async fn test_scan_cex_dex_arbitrage_bnbusdt() {
@@ -19,17 +21,16 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
         TEST_SYMBOL
     );
 
-    // Get BSC tokens for BNBUSDT
-    let bsc_tokens = BscTokens::new();
-    let bnb_token = bsc_tokens.get(&TokenMap::BNB).unwrap();
-    let usdt_token = bsc_tokens.get(&TokenMap::USDT).unwrap();
+    // Create BSC tokens algorithmically (no hard-coded token provider)
+    let bnb_token = create_bsc_bnb();
+    let usdt_token = create_bsc_usdt();
 
     let result = ArbitrageScanner::scan_arbitrage_opportunities(
         TEST_SYMBOL,
         &cex_exchanges,
         Some(&dex_exchanges),
-        Some(bnb_token),
-        Some(usdt_token),
+        Some(&bnb_token),
+        Some(&usdt_token),
         Some(QUOTE_AMOUNT),
     )
     .await;

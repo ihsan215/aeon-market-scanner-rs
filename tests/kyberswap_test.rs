@@ -1,5 +1,10 @@
-use aeon_market_scanner_rs::dex::chains::{BaseTokens, BscTokens, EthereumTokens, TokenMap};
+mod scanner_common;
+
 use aeon_market_scanner_rs::{DEXTrait, DexAggregator, Exchange, ExchangeTrait, KyberSwap};
+use scanner_common::{
+    create_base_eth, create_base_usdc, create_bsc_bnb, create_bsc_usdt, create_eth_eth,
+    create_eth_usdt,
+};
 
 const QUOTE_AMOUNT: f64 = 1000.0;
 
@@ -30,9 +35,8 @@ async fn test_kyberswap_exchange_name() {
 #[tokio::test]
 async fn test_kyberswap_get_price_ethereum() {
     let exchange = KyberSwap::new();
-    let tokens = EthereumTokens::new();
-    let eth_token = tokens.get(&TokenMap::ETH).unwrap().clone();
-    let usdt_token = tokens.get(&TokenMap::USDT).unwrap().clone();
+    let eth_token = create_eth_eth();
+    let usdt_token = create_eth_usdt();
     let result = exchange
         .get_price(&eth_token, &usdt_token, QUOTE_AMOUNT)
         .await;
@@ -140,9 +144,8 @@ async fn test_kyberswap_get_price_ethereum() {
 #[tokio::test]
 async fn test_kyberswap_get_price_base() {
     let exchange = KyberSwap::new();
-    let tokens = BaseTokens::new();
-    let eth_token = tokens.get(&TokenMap::ETH).unwrap().clone();
-    let usdc_token = tokens.get(&TokenMap::USDC).unwrap().clone();
+    let eth_token = create_base_eth();
+    let usdc_token = create_base_usdc();
     let result = exchange
         .get_price(&eth_token, &usdc_token, QUOTE_AMOUNT)
         .await;
@@ -211,9 +214,8 @@ async fn test_kyberswap_get_price_bsc() {
     println!("===== BSC CHAIN TEST =======");
 
     let exchange = KyberSwap::new();
-    let tokens = BscTokens::new();
-    let bnb_token = tokens.get(&TokenMap::BNB).unwrap().clone();
-    let usdt_token = tokens.get(&TokenMap::USDT).unwrap().clone();
+    let bnb_token = create_bsc_bnb();
+    let usdt_token = create_bsc_usdt();
     let result = exchange
         .get_price(&bnb_token, &usdt_token, QUOTE_AMOUNT)
         .await;
@@ -295,10 +297,8 @@ async fn test_kyberswap_get_price_bsc() {
 #[tokio::test]
 async fn test_kyberswap_get_price_different_chains() {
     let exchange = KyberSwap::new();
-    let eth_tokens = EthereumTokens::new();
-    let base_tokens = BaseTokens::new();
-    let eth_token = eth_tokens.get(&TokenMap::ETH).unwrap().clone();
-    let usdc_token = base_tokens.get(&TokenMap::USDC).unwrap().clone();
+    let eth_token = create_eth_eth();
+    let usdc_token = create_base_usdc();
     let result = exchange
         .get_price(&eth_token, &usdc_token, QUOTE_AMOUNT)
         .await;
