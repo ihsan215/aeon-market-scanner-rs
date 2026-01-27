@@ -57,17 +57,20 @@ async fn test_arbitrage_opportunity_structure_bnbusdt() {
         "Buy and sell exchanges should be different"
     );
 
-    // Verify price data contains correct information and full response
+    // Verify price data: opp.buy_price / opp.sell_price are effective (commission); raw in price_data
     match &opp.buy_price_data {
         PriceData::Cex(cex_price) => {
             assert_eq!(cex_price.symbol, TEST_SYMBOL);
-            assert_eq!(cex_price.ask_price, opp.buy_price);
+            assert!(
+                opp.buy_price >= cex_price.ask_price,
+                "Effective buy (ask+commission) >= raw ask"
+            );
             assert!(cex_price.ask_qty > 0.0, "Ask quantity should be positive");
             assert!(cex_price.timestamp > 0, "Timestamp should be present");
             assert!(cex_price.mid_price > 0.0, "Mid price should be present");
             println!(
-                "  Buy response contains: timestamp={}, mid_price={:.4}",
-                cex_price.timestamp, cex_price.mid_price
+                "  Buy: raw ask={:.4}, effective={:.4}",
+                cex_price.ask_price, opp.buy_price
             );
         }
         PriceData::Dex(_) => {}
@@ -76,13 +79,16 @@ async fn test_arbitrage_opportunity_structure_bnbusdt() {
     match &opp.sell_price_data {
         PriceData::Cex(cex_price) => {
             assert_eq!(cex_price.symbol, TEST_SYMBOL);
-            assert_eq!(cex_price.bid_price, opp.sell_price);
+            assert!(
+                opp.sell_price <= cex_price.bid_price,
+                "Effective sell (bid−commission) <= raw bid"
+            );
             assert!(cex_price.bid_qty > 0.0, "Bid quantity should be positive");
             assert!(cex_price.timestamp > 0, "Timestamp should be present");
             assert!(cex_price.mid_price > 0.0, "Mid price should be present");
             println!(
-                "  Sell response contains: timestamp={}, mid_price={:.4}",
-                cex_price.timestamp, cex_price.mid_price
+                "  Sell: raw bid={:.4}, effective={:.4}",
+                cex_price.bid_price, opp.sell_price
             );
         }
         PriceData::Dex(_) => {}

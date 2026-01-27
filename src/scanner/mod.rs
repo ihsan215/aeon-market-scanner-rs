@@ -1,5 +1,6 @@
 use crate::common::{
-    CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, MarketScannerError,
+    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice,
+    MarketScannerError, effective_price,
 };
 use crate::dex::chains::Token;
 use crate::{
@@ -91,7 +92,8 @@ impl ArbitrageScanner {
         let mut prices = Vec::new();
 
         if let Some(dex_list) = exchanges {
-            if let (Some(base), Some(quote), Some(amount)) = (base_token, quote_token, quote_amount) {
+            if let (Some(base), Some(quote), Some(amount)) = (base_token, quote_token, quote_amount)
+            {
                 let futures: Vec<_> = dex_list
                     .iter()
                     .map(|exchange| Self::get_dex_price(exchange, base, quote, amount))
@@ -119,36 +121,44 @@ impl ArbitrageScanner {
     ) -> Vec<ArbitrageOpportunity> {
         let mut opportunities = Vec::new();
 
-        // Create buy candidates (sorted by ask price - lowest first)
+        // Create buy candidates: effective ask = ask × (1 + fee), sorted lowest first
         let mut buy_candidates = Vec::new();
         for cex_price in cex_prices {
+            let effective =
+                effective_price(cex_price.ask_price, &cex_price.exchange, AmountSide::Buy);
             buy_candidates.push((
-                cex_price.ask_price,
+                effective,
                 PriceData::Cex(cex_price.clone()),
                 Self::exchange_name(&cex_price.exchange),
             ));
         }
         for dex_price in dex_prices {
+            let effective =
+                effective_price(dex_price.ask_price, &dex_price.exchange, AmountSide::Buy);
             buy_candidates.push((
-                dex_price.ask_price,
+                effective,
                 PriceData::Dex(dex_price.clone()),
                 Self::exchange_name(&dex_price.exchange),
             ));
         }
         buy_candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Create sell candidates (sorted by bid price - highest first)
+        // Create sell candidates: effective bid = bid × (1 − fee), sorted highest first
         let mut sell_candidates = Vec::new();
         for cex_price in cex_prices {
+            let effective =
+                effective_price(cex_price.bid_price, &cex_price.exchange, AmountSide::Sell);
             sell_candidates.push((
-                cex_price.bid_price,
+                effective,
                 PriceData::Cex(cex_price.clone()),
                 Self::exchange_name(&cex_price.exchange),
             ));
         }
         for dex_price in dex_prices {
+            let effective =
+                effective_price(dex_price.bid_price, &dex_price.exchange, AmountSide::Sell);
             sell_candidates.push((
-                dex_price.bid_price,
+                effective,
                 PriceData::Dex(dex_price.clone()),
                 Self::exchange_name(&dex_price.exchange),
             ));

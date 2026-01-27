@@ -20,13 +20,13 @@ pub struct ArbitrageOpportunity {
     pub sell_exchange: String,
     /// Symbol (e.g., "BTCUSDT")
     pub symbol: String,
-    /// Buy price (ask price)
+    /// Effective buy price (ask × (1 + fee))
     pub buy_price: f64,
-    /// Sell price (bid price)
+    /// Effective sell price (bid × (1 − fee))
     pub sell_price: f64,
-    /// Absolute profit (sell_price - buy_price)
+    /// Absolute profit (sell_price − buy_price), net of fees
     pub profit: f64,
-    /// Profit percentage ((profit / buy_price) * 100)
+    /// Profit percentage ((profit / buy_price) × 100), net of fees
     pub profit_percentage: f64,
     /// Buy quantity (min(ask_qty, bid_qty))
     pub buy_quantity: f64,
