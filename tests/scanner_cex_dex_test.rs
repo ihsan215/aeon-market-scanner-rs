@@ -4,12 +4,12 @@ use aeon_market_scanner_rs::DexAggregator;
 
 use aeon_market_scanner_rs::scanner::{ArbitrageScanner, PriceData};
 use scanner_common::{
-    QUOTE_AMOUNT, TEST_SYMBOL, create_bsc_bnb, create_bsc_usdt, get_all_cex_exchanges,
+    QUOTE_AMOUNT, TEST_SYMBOL, create_eth_eth, create_eth_usdt, get_all_cex_exchanges,
 };
 
 #[tokio::test]
-async fn test_scan_cex_dex_arbitrage_bnbusdt() {
-    println!("===== Testing CEX-DEX Arbitrage Scanner for BNBUSDT =====\n");
+async fn test_scan_cex_dex_arbitrage_ethusdt() {
+    println!("===== Testing CEX-DEX Arbitrage Scanner for ETHUSDT =====\n");
 
     let cex_exchanges = get_all_cex_exchanges();
     let dex_exchanges = vec![DexAggregator::KyberSwap];
@@ -21,15 +21,15 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
         TEST_SYMBOL
     );
 
-    // Create BSC tokens algorithmically (no hard-coded token provider)
-    let bnb_token = create_bsc_bnb();
-    let usdt_token = create_bsc_usdt();
+    // Create Ethereum tokens for DEX (KyberSwap)
+    let eth_token = create_eth_eth();
+    let usdt_token = create_eth_usdt();
 
     let result = ArbitrageScanner::scan_arbitrage_opportunities(
         TEST_SYMBOL,
         &cex_exchanges,
         Some(&dex_exchanges),
-        Some(&bnb_token),
+        Some(&eth_token),
         Some(&usdt_token),
         Some(QUOTE_AMOUNT),
     )
@@ -67,7 +67,12 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
         println!("  Effective bid: ${:.4}", opp.effective_bid);
         println!("  Spread: ${:.4}", opp.spread);
         println!("  Spread %: {:.4}%", opp.spread_percentage);
+        println!("  Executable quantity: {:.4}", opp.executable_quantity);
         println!("  Total profit: ${:.4}", opp.total_profit());
+        println!(
+            "  Source commission: {:.4}% | Dest commission: {:.4}% | Total commission (USD): ${:.4}",
+            opp.source_commission_percent, opp.destination_commission_percent, opp.total_commission
+        );
 
         // Show full price data from buy and sell responses
         println!("  Source Leg:");

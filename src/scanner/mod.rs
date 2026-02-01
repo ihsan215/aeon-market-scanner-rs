@@ -1,6 +1,6 @@
 use crate::common::{
     AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice,
-    MarketScannerError, effective_price,
+    MarketScannerError, effective_price, fee_rate,
 };
 use crate::dex::chains::Token;
 use crate::{
@@ -182,6 +182,12 @@ impl ArbitrageScanner {
                 let (symbol, buy_qty, sell_qty) = Self::extract_quantities(source_data, dest_data);
                 let executable_quantity = buy_qty.min(sell_qty);
 
+                let (src_comm_rate, dest_comm_rate) =
+                    Self::extract_commission_rates(source_data, dest_data);
+                let total_commission =
+                    *effective_ask * executable_quantity * (src_comm_rate / 100.0)
+                        + *effective_bid * executable_quantity * (dest_comm_rate / 100.0);
+
                 opportunities.push(ArbitrageOpportunity {
                     source_exchange: source_exchange.clone(),
                     destination_exchange: dest_exchange.clone(),
@@ -191,6 +197,9 @@ impl ArbitrageScanner {
                     spread,
                     spread_percentage,
                     executable_quantity,
+                    source_commission_percent: src_comm_rate,
+                    destination_commission_percent: dest_comm_rate,
+                    total_commission,
                     source_leg: source_data.clone(),
                     destination_leg: dest_data.clone(),
                 });
@@ -198,6 +207,19 @@ impl ArbitrageScanner {
         }
 
         opportunities
+    }
+
+    /// Extracts commission rates in percent from price data (e.g. 0.1 = 0.1%)
+    fn extract_commission_rates(buy_data: &PriceData, sell_data: &PriceData) -> (f64, f64) {
+        let src = match buy_data {
+            PriceData::Cex(p) => fee_rate(&p.exchange) * 100.0,
+            PriceData::Dex(p) => fee_rate(&p.exchange) * 100.0,
+        };
+        let dest = match sell_data {
+            PriceData::Cex(p) => fee_rate(&p.exchange) * 100.0,
+            PriceData::Dex(p) => fee_rate(&p.exchange) * 100.0,
+        };
+        (src, dest)
     }
 
     /// Extracts symbol and quantities from price data

@@ -7,7 +7,7 @@ pub mod utils;
 
 // Re-export
 pub use client::create_http_client;
-pub use commission::{AmountSide, effective_price, taker_fee_rate};
+pub use commission::{AmountSide, effective_price, fee_rate, taker_fee_rate};
 pub use errors::MarketScannerError;
 pub use exchange::{CEXTrait, CexExchange, DEXTrait, DexAggregator, Exchange, ExchangeTrait};
 pub use price::{CexPrice, DexPrice, DexRouteSummary};

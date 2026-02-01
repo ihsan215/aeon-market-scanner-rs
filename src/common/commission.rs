@@ -2,7 +2,7 @@
 //!
 //! Arbitrage profit uses these effective prices so commission is already deducted.
 
-use crate::common::exchange::{CexExchange, Exchange};
+use crate::common::exchange::{CexExchange, DexAggregator, Exchange};
 
 /// Taker fee rate (decimal). E.g. 0.001 = 0.1%.
 /// Spot trading, default tier. VIP / volume discounts not applied.
@@ -25,6 +25,21 @@ pub fn taker_fee_rate(cex: &CexExchange) -> f64 {
     }
 }
 
+/// DEX fee rate (decimal). KyberSwap Swap has no platform fee.
+fn dex_taker_fee_rate(_dex: &DexAggregator) -> f64 {
+    match _dex {
+        DexAggregator::KyberSwap => 0.0,
+    }
+}
+
+/// Fee rate for any exchange (CEX or DEX). Decimal, e.g. 0.001 = 0.1%.
+pub fn fee_rate(exchange: &Exchange) -> f64 {
+    match exchange {
+        Exchange::Cex(cex) => taker_fee_rate(cex),
+        Exchange::Dex(dex) => dex_taker_fee_rate(dex),
+    }
+}
+
 /// Side for commission: Buy = pay more (amount × (1 + fee)), Sell = receive less (amount × (1 − fee)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AmountSide {
@@ -35,14 +50,9 @@ pub enum AmountSide {
 /// Effective amount after commission. Ask → `AmountSide::Buy`, bid → `AmountSide::Sell`.
 /// Use for best-buy / best-sell comparison and profit calc.
 pub fn effective_price(amount: f64, exchange: &Exchange, side: AmountSide) -> f64 {
-    match exchange {
-        Exchange::Cex(cex) => {
-            let fee = taker_fee_rate(cex);
-            match side {
-                AmountSide::Buy => amount * (1.0 + fee),
-                AmountSide::Sell => amount * (1.0 - fee),
-            }
-        }
-        Exchange::Dex(_) => amount,
+    let fee = fee_rate(exchange);
+    match side {
+        AmountSide::Buy => amount * (1.0 + fee),
+        AmountSide::Sell => amount * (1.0 - fee),
     }
 }

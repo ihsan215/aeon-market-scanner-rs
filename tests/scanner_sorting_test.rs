@@ -3,8 +3,8 @@ use aeon_market_scanner_rs::scanner::ArbitrageScanner;
 use scanner_common::{TEST_SYMBOL, get_all_cex_exchanges};
 
 #[tokio::test]
-async fn test_arbitrage_sorting_verification_bnbusdt() {
-    println!("===== Testing Arbitrage Sorting Verification for BNBUSDT =====\n");
+async fn test_arbitrage_sorting_verification_ethusdt() {
+    println!("===== Testing Arbitrage Sorting Verification for ETHUSDT =====\n");
 
     let cex_exchanges = get_all_cex_exchanges();
 

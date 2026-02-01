@@ -4,8 +4,8 @@ use aeon_market_scanner_rs::scanner::{ArbitrageOpportunity, ArbitrageScanner, Pr
 use scanner_common::TEST_SYMBOL;
 
 #[tokio::test]
-async fn test_arbitrage_serialization_bnbusdt() {
-    println!("===== Testing ArbitrageOpportunity Serialization for BNBUSDT =====\n");
+async fn test_arbitrage_serialization_ethusdt() {
+    println!("===== Testing ArbitrageOpportunity Serialization for ETHUSDT =====\n");
 
     let cex_exchanges = vec![CexExchange::Binance, CexExchange::Bybit, CexExchange::OKX];
 

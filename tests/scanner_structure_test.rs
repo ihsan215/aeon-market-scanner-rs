@@ -4,8 +4,8 @@ use aeon_market_scanner_rs::scanner::{ArbitrageScanner, PriceData};
 use scanner_common::TEST_SYMBOL;
 
 #[tokio::test]
-async fn test_arbitrage_opportunity_structure_bnbusdt() {
-    println!("===== Testing ArbitrageOpportunity Structure for BNBUSDT =====\n");
+async fn test_arbitrage_opportunity_structure_ethusdt() {
+    println!("===== Testing ArbitrageOpportunity Structure for ETHUSDT =====\n");
 
     let cex_exchanges = vec![
         CexExchange::Binance,
@@ -41,6 +41,10 @@ async fn test_arbitrage_opportunity_structure_bnbusdt() {
     println!("  Destination (sell): {}", opp.destination_exchange);
     println!("  Spread: {:.4}%", opp.spread_percentage);
     println!("  Spread amount: ${:.4}", opp.spread);
+    println!(
+        "  Source commission: {:.4}% | Dest: {:.4}% | Total commission (USD): ${:.4}",
+        opp.source_commission_percent, opp.destination_commission_percent, opp.total_commission
+    );
 
     // Verify all fields are populated
     assert!(

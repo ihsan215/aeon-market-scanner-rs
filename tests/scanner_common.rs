@@ -6,7 +6,7 @@ use aeon_market_scanner_rs::dex::chains::{ChainId, Token};
 pub const QUOTE_AMOUNT: f64 = 1000.0;
 
 #[allow(dead_code)]
-pub const TEST_SYMBOL: &str = "BNBUSDT";
+pub const TEST_SYMBOL: &str = "ETHUSDT";
 
 /// Helper function to get all CEX exchanges
 #[allow(dead_code)]

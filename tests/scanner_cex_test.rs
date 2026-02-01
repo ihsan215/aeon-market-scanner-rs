@@ -3,8 +3,8 @@ use aeon_market_scanner_rs::scanner::{ArbitrageScanner, PriceData};
 use scanner_common::{TEST_SYMBOL, get_all_cex_exchanges};
 
 #[tokio::test]
-async fn test_scan_cex_arbitrage_bnbusdt() {
-    println!("===== Testing CEX Arbitrage Scanner for BNBUSDT =====\n");
+async fn test_scan_cex_arbitrage_ethusdt() {
+    println!("===== Testing CEX Arbitrage Scanner for ETHUSDT =====\n");
 
     let cex_exchanges = get_all_cex_exchanges();
     println!(
@@ -53,6 +53,10 @@ async fn test_scan_cex_arbitrage_bnbusdt() {
         println!("  Spread %: {:.4}%", opp.spread_percentage);
         println!("  Executable quantity: {:.4}", opp.executable_quantity);
         println!("  Total profit: ${:.4}", opp.total_profit());
+        println!(
+            "  Source commission: {:.4}% | Dest commission: {:.4}% | Total commission (USD): ${:.4}",
+            opp.source_commission_percent, opp.destination_commission_percent, opp.total_commission
+        );
 
         // Show full price data from buy and sell responses
         println!("  Source Leg:");
