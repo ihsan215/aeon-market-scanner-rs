@@ -1,6 +1,6 @@
 mod scanner_common;
-use scanner_common::{get_all_cex_exchanges, TEST_SYMBOL};
 use aeon_market_scanner_rs::scanner::ArbitrageScanner;
+use scanner_common::{TEST_SYMBOL, get_all_cex_exchanges};
 
 #[tokio::test]
 async fn test_arbitrage_sorting_verification_bnbusdt() {
@@ -41,12 +41,12 @@ async fn test_arbitrage_sorting_verification_bnbusdt() {
         let next = &opportunities[i + 1];
 
         assert!(
-            current.profit_percentage >= next.profit_percentage,
+            current.spread_percentage >= next.spread_percentage,
             "Opportunity #{} ({:.4}%) should be >= Opportunity #{} ({:.4}%)",
             i + 1,
-            current.profit_percentage,
+            current.spread_percentage,
             i + 2,
-            next.profit_percentage
+            next.spread_percentage
         );
     }
 
@@ -55,10 +55,10 @@ async fn test_arbitrage_sorting_verification_bnbusdt() {
         println!(
             "  #{}: {} -> {} | {:.4}% | ${:.4}",
             i + 1,
-            opp.buy_exchange,
-            opp.sell_exchange,
-            opp.profit_percentage,
-            opp.profit
+            opp.source_exchange,
+            opp.destination_exchange,
+            opp.spread_percentage,
+            opp.spread
         );
     }
 

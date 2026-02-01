@@ -49,8 +49,8 @@ impl ArbitrageScanner {
         // Sort by profitability (most profitable first)
         let mut opportunities = opportunities;
         opportunities.sort_by(|a, b| {
-            b.profit_percentage
-                .partial_cmp(&a.profit_percentage)
+            b.spread_percentage
+                .partial_cmp(&a.spread_percentage)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -166,33 +166,33 @@ impl ArbitrageScanner {
         sell_candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         // Match buy and sell candidates
-        for (buy_price, buy_data, buy_exchange) in &buy_candidates {
-            for (sell_price, sell_data, sell_exchange) in &sell_candidates {
-                if buy_exchange == sell_exchange || *sell_price <= *buy_price {
+        for (effective_ask, source_data, source_exchange) in &buy_candidates {
+            for (effective_bid, dest_data, dest_exchange) in &sell_candidates {
+                if source_exchange == dest_exchange || *effective_bid <= *effective_ask {
                     continue;
                 }
 
-                let profit = sell_price - buy_price;
-                let profit_percentage = (profit / buy_price) * 100.0;
+                let spread = effective_bid - effective_ask;
+                let spread_percentage = (spread / effective_ask) * 100.0;
 
-                if profit_percentage < 0.01 {
+                if spread_percentage < 0.01 {
                     continue;
                 }
 
-                let (symbol, buy_qty, sell_qty) = Self::extract_quantities(buy_data, sell_data);
+                let (symbol, buy_qty, sell_qty) = Self::extract_quantities(source_data, dest_data);
+                let executable_quantity = buy_qty.min(sell_qty);
 
                 opportunities.push(ArbitrageOpportunity {
-                    buy_exchange: buy_exchange.clone(),
-                    sell_exchange: sell_exchange.clone(),
+                    source_exchange: source_exchange.clone(),
+                    destination_exchange: dest_exchange.clone(),
                     symbol,
-                    buy_price: *buy_price,
-                    sell_price: *sell_price,
-                    profit,
-                    profit_percentage,
-                    buy_quantity: buy_qty.min(sell_qty),
-                    sell_quantity: sell_qty.min(buy_qty),
-                    buy_price_data: buy_data.clone(), // Contains full response: timestamp, route data, etc.
-                    sell_price_data: sell_data.clone(), // Contains full response: timestamp, route data, etc.
+                    effective_ask: *effective_ask,
+                    effective_bid: *effective_bid,
+                    spread,
+                    spread_percentage,
+                    executable_quantity,
+                    source_leg: source_data.clone(),
+                    destination_leg: dest_data.clone(),
                 });
             }
         }

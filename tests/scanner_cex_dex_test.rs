@@ -60,18 +60,18 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
 
     for (i, opp) in opportunities.iter().enumerate() {
         println!("Opportunity #{}:", i + 1);
-        println!("  Buy from: {}", opp.buy_exchange);
-        println!("  Sell on: {}", opp.sell_exchange);
+        println!("  Source (buy): {}", opp.source_exchange);
+        println!("  Destination (sell): {}", opp.destination_exchange);
         println!("  Symbol: {}", opp.symbol);
-        println!("  Buy price: ${:.4}", opp.buy_price);
-        println!("  Sell price: ${:.4}", opp.sell_price);
-        println!("  Profit: ${:.4}", opp.profit);
-        println!("  Profit %: {:.4}%", opp.profit_percentage);
+        println!("  Effective ask: ${:.4}", opp.effective_ask);
+        println!("  Effective bid: ${:.4}", opp.effective_bid);
+        println!("  Spread: ${:.4}", opp.spread);
+        println!("  Spread %: {:.4}%", opp.spread_percentage);
         println!("  Total profit: ${:.4}", opp.total_profit());
 
         // Show full price data from buy and sell responses
-        println!("  Buy Price Data:");
-        match &opp.buy_price_data {
+        println!("  Source Leg:");
+        match &opp.source_leg {
             PriceData::Cex(cex_price) => {
                 println!("    Type: CEX");
                 println!("    Exchange: {:?}", cex_price.exchange);
@@ -107,8 +107,8 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
                 }
             }
         }
-        println!("  Sell Price Data:");
-        match &opp.sell_price_data {
+        println!("  Destination Leg:");
+        match &opp.destination_leg {
             PriceData::Cex(cex_price) => {
                 println!("    Type: CEX");
                 println!("    Exchange: {:?}", cex_price.exchange);
@@ -147,25 +147,25 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
         println!();
 
         // Verify profit is positive
-        assert!(opp.profit > 0.0, "Profit should be positive");
+        assert!(opp.spread > 0.0, "Spread should be positive");
         assert!(
-            opp.profit_percentage > 0.0,
-            "Profit percentage should be positive"
+            opp.spread_percentage > 0.0,
+            "Spread percentage should be positive"
         );
         assert!(
-            opp.sell_price > opp.buy_price,
-            "Sell price should be higher than buy price"
+            opp.effective_bid > opp.effective_ask,
+            "Effective bid should be higher than effective ask"
         );
 
         // Categorize opportunities
-        match (&opp.buy_price_data, &opp.sell_price_data) {
+        match (&opp.source_leg, &opp.destination_leg) {
             (PriceData::Cex(_), PriceData::Cex(_)) => {
                 cex_cex_count += 1;
             }
             (PriceData::Cex(_), PriceData::Dex(_)) => {
                 cex_dex_count += 1;
                 // Verify DEX route data is present
-                if let PriceData::Dex(dex_price) = &opp.sell_price_data {
+                if let PriceData::Dex(dex_price) = &opp.destination_leg {
                     assert!(
                         dex_price.bid_route_summary.is_some() || dex_price.bid_route_data.is_some(),
                         "DEX sell should have route data"
@@ -175,7 +175,7 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
             (PriceData::Dex(_), PriceData::Cex(_)) => {
                 dex_cex_count += 1;
                 // Verify DEX route data is present
-                if let PriceData::Dex(dex_price) = &opp.buy_price_data {
+                if let PriceData::Dex(dex_price) = &opp.source_leg {
                     assert!(
                         dex_price.ask_route_summary.is_some() || dex_price.ask_route_data.is_some(),
                         "DEX buy should have route data"
@@ -185,13 +185,13 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
             (PriceData::Dex(_), PriceData::Dex(_)) => {
                 dex_dex_count += 1;
                 // Verify DEX route data is present for both
-                if let PriceData::Dex(buy_dex) = &opp.buy_price_data {
+                if let PriceData::Dex(buy_dex) = &opp.source_leg {
                     assert!(
                         buy_dex.ask_route_summary.is_some() || buy_dex.ask_route_data.is_some(),
                         "DEX buy should have route data"
                     );
                 }
-                if let PriceData::Dex(sell_dex) = &opp.sell_price_data {
+                if let PriceData::Dex(sell_dex) = &opp.destination_leg {
                     assert!(
                         sell_dex.bid_route_summary.is_some() || sell_dex.bid_route_data.is_some(),
                         "DEX sell should have route data"
@@ -203,8 +203,8 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
         // Verify sorting (most profitable first)
         if i < opportunities.len() - 1 {
             assert!(
-                opp.profit_percentage >= opportunities[i + 1].profit_percentage,
-                "Opportunities should be sorted by profit percentage (descending)"
+                opp.spread_percentage >= opportunities[i + 1].spread_percentage,
+                "Opportunities should be sorted by spread percentage (descending)"
             );
         }
     }
@@ -222,7 +222,7 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
             opportunities.len()
         );
         for (i, opp) in opportunities.iter().enumerate() {
-            let opp_type = match (&opp.buy_price_data, &opp.sell_price_data) {
+            let opp_type = match (&opp.source_leg, &opp.destination_leg) {
                 (PriceData::Cex(_), PriceData::Cex(_)) => "CEX-CEX",
                 (PriceData::Cex(_), PriceData::Dex(_)) => "CEX-DEX",
                 (PriceData::Dex(_), PriceData::Cex(_)) => "DEX-CEX",
@@ -231,10 +231,10 @@ async fn test_scan_cex_dex_arbitrage_bnbusdt() {
             println!(
                 "  #{}: {} -> {} | Profit: {:.4}% | ${:.4} | Type: {}",
                 i + 1,
-                opp.buy_exchange,
-                opp.sell_exchange,
-                opp.profit_percentage,
-                opp.profit,
+                opp.source_exchange,
+                opp.destination_exchange,
+                opp.spread_percentage,
+                opp.spread,
                 opp_type
             );
         }

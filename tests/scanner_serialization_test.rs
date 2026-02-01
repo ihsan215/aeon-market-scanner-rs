@@ -53,13 +53,13 @@ async fn test_arbitrage_serialization_bnbusdt() {
 
     let deserialized = deserialized_result.unwrap();
     assert_eq!(deserialized.symbol, opp.symbol);
-    assert_eq!(deserialized.buy_exchange, opp.buy_exchange);
-    assert_eq!(deserialized.sell_exchange, opp.sell_exchange);
-    assert!((deserialized.buy_price - opp.buy_price).abs() < 0.0001);
-    assert!((deserialized.sell_price - opp.sell_price).abs() < 0.0001);
+    assert_eq!(deserialized.source_exchange, opp.source_exchange);
+    assert_eq!(deserialized.destination_exchange, opp.destination_exchange);
+    assert!((deserialized.effective_ask - opp.effective_ask).abs() < 0.0001);
+    assert!((deserialized.effective_bid - opp.effective_bid).abs() < 0.0001);
 
     // Verify that response data is preserved in serialization
-    match (&deserialized.buy_price_data, &opp.buy_price_data) {
+    match (&deserialized.source_leg, &opp.source_leg) {
         (PriceData::Cex(deserialized_cex), PriceData::Cex(original_cex)) => {
             assert_eq!(deserialized_cex.timestamp, original_cex.timestamp);
             assert_eq!(deserialized_cex.mid_price, original_cex.mid_price);

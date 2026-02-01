@@ -44,20 +44,19 @@ async fn test_scan_cex_arbitrage_bnbusdt() {
     // Verify opportunities are sorted by profitability (descending - most profitable first)
     for (i, opp) in opportunities.iter().enumerate() {
         println!("Opportunity #{}:", i + 1);
-        println!("  Buy from: {}", opp.buy_exchange);
-        println!("  Sell on: {}", opp.sell_exchange);
+        println!("  Source (buy): {}", opp.source_exchange);
+        println!("  Destination (sell): {}", opp.destination_exchange);
         println!("  Symbol: {}", opp.symbol);
-        println!("  Buy price: ${:.4}", opp.buy_price);
-        println!("  Sell price: ${:.4}", opp.sell_price);
-        println!("  Profit: ${:.4}", opp.profit);
-        println!("  Profit %: {:.4}%", opp.profit_percentage);
-        println!("  Buy quantity: {:.4}", opp.buy_quantity);
-        println!("  Sell quantity: {:.4}", opp.sell_quantity);
+        println!("  Effective ask: ${:.4}", opp.effective_ask);
+        println!("  Effective bid: ${:.4}", opp.effective_bid);
+        println!("  Spread: ${:.4}", opp.spread);
+        println!("  Spread %: {:.4}%", opp.spread_percentage);
+        println!("  Executable quantity: {:.4}", opp.executable_quantity);
         println!("  Total profit: ${:.4}", opp.total_profit());
 
         // Show full price data from buy and sell responses
-        println!("  Buy Price Data:");
-        match &opp.buy_price_data {
+        println!("  Source Leg:");
+        match &opp.source_leg {
             PriceData::Cex(cex_price) => {
                 println!("    Exchange: {:?}", cex_price.exchange);
                 println!("    Symbol: {}", cex_price.symbol);
@@ -70,8 +69,8 @@ async fn test_scan_cex_arbitrage_bnbusdt() {
             }
             PriceData::Dex(_) => {}
         }
-        println!("  Sell Price Data:");
-        match &opp.sell_price_data {
+        println!("  Destination Leg:");
+        match &opp.destination_leg {
             PriceData::Cex(cex_price) => {
                 println!("    Exchange: {:?}", cex_price.exchange);
                 println!("    Symbol: {}", cex_price.symbol);
@@ -87,52 +86,58 @@ async fn test_scan_cex_arbitrage_bnbusdt() {
         println!();
 
         // Verify profit is positive
-        assert!(opp.profit > 0.0, "Profit should be positive");
+        assert!(opp.spread > 0.0, "Spread should be positive");
         assert!(
-            opp.profit_percentage > 0.0,
-            "Profit percentage should be positive"
+            opp.spread_percentage > 0.0,
+            "Spread percentage should be positive"
         );
-        assert!(opp.buy_price > 0.0, "Buy price should be positive");
-        assert!(opp.sell_price > 0.0, "Sell price should be positive");
+        assert!(opp.effective_ask > 0.0, "Effective ask should be positive");
+        assert!(opp.effective_bid > 0.0, "Effective bid should be positive");
         assert!(
-            opp.sell_price > opp.buy_price,
-            "Sell price should be higher than buy price"
+            opp.effective_bid > opp.effective_ask,
+            "Effective bid should be higher than effective ask"
         );
 
         // Verify price data is present and contains full response
-        match &opp.buy_price_data {
+        match &opp.source_leg {
             PriceData::Cex(cex_price) => {
                 assert_eq!(cex_price.symbol, TEST_SYMBOL);
-                assert_eq!(cex_price.ask_price, opp.buy_price);
+                assert!(
+                    opp.effective_ask >= cex_price.ask_price,
+                    "Effective ask (with fee) >= raw ask"
+                );
                 assert!(cex_price.timestamp > 0, "Timestamp should be present");
                 assert!(cex_price.mid_price > 0.0, "Mid price should be present");
             }
             PriceData::Dex(_) => {
-                panic!("Buy price data should be CEX for CEX-only scan");
+                panic!("Source leg should be CEX for CEX-only scan");
             }
         }
 
-        match &opp.sell_price_data {
+        match &opp.destination_leg {
             PriceData::Cex(cex_price) => {
                 assert_eq!(cex_price.symbol, TEST_SYMBOL);
-                assert_eq!(cex_price.bid_price, opp.sell_price);
+                assert!(
+                    opp.effective_bid <= cex_price.bid_price,
+                    "Effective bid (with fee) <= raw bid"
+                );
                 assert!(cex_price.timestamp > 0, "Timestamp should be present");
                 assert!(cex_price.mid_price > 0.0, "Mid price should be present");
             }
             PriceData::Dex(_) => {
-                panic!("Sell price data should be CEX for CEX-only scan");
+                panic!("Destination leg should be CEX for CEX-only scan");
             }
         }
 
         // Verify sorting (each opportunity should have profit_percentage >= next one)
         if i < opportunities.len() - 1 {
             assert!(
-                opp.profit_percentage >= opportunities[i + 1].profit_percentage,
-                "Opportunities should be sorted by profit percentage (descending) - Opportunity #{} has {:.4}% but #{} has {:.4}%",
+                opp.spread_percentage >= opportunities[i + 1].spread_percentage,
+                "Opportunities should be sorted by spread percentage (descending) - Opportunity #{} has {:.4}% but #{} has {:.4}%",
                 i + 1,
-                opp.profit_percentage,
+                opp.spread_percentage,
                 i + 2,
-                opportunities[i + 1].profit_percentage
+                opportunities[i + 1].spread_percentage
             );
         }
     }
@@ -144,10 +149,10 @@ async fn test_scan_cex_arbitrage_bnbusdt() {
             println!(
                 "  #{}: {} -> {} | Profit: {:.4}% | ${:.4}",
                 i + 1,
-                opp.buy_exchange,
-                opp.sell_exchange,
-                opp.profit_percentage,
-                opp.profit
+                opp.source_exchange,
+                opp.destination_exchange,
+                opp.spread_percentage,
+                opp.spread
             );
         }
     }

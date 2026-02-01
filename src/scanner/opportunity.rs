@@ -11,41 +11,47 @@ pub enum PriceData {
     Dex(DexPrice),
 }
 
-/// Arbitrage opportunity - opportunity to buy from one exchange and sell on another
+/// Arbitrage opportunity: buy from one exchange (source), sell on another (destination).
+///
+/// Uses standard arbitrage terminology:
+/// - **Source leg**: where we acquire the asset (pay effective ask)
+/// - **Destination leg**: where we dispose of the asset (receive effective bid)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArbitrageOpportunity {
-    /// Exchange name to buy from
-    pub buy_exchange: String,
-    /// Exchange name to sell on
-    pub sell_exchange: String,
-    /// Symbol (e.g., "BTCUSDT")
+    /// Source exchange: where we buy (acquire) the asset
+    #[serde(alias = "buy_exchange")]
+    pub source_exchange: String,
+    /// Destination exchange: where we sell (dispose of) the asset
+    #[serde(alias = "sell_exchange")]
+    pub destination_exchange: String,
+    /// Trading pair symbol (e.g. "BTCUSDT")
     pub symbol: String,
-    /// Effective buy price (ask × (1 + fee))
-    pub buy_price: f64,
-    /// Effective sell price (bid × (1 − fee))
-    pub sell_price: f64,
-    /// Absolute profit (sell_price − buy_price), net of fees
-    pub profit: f64,
-    /// Profit percentage ((profit / buy_price) × 100), net of fees
-    pub profit_percentage: f64,
-    /// Buy quantity (min(ask_qty, bid_qty))
-    pub buy_quantity: f64,
-    /// Sell quantity (min(ask_qty, bid_qty))
-    pub sell_quantity: f64,
-    /// Full price response data for buy side from get_price call
-    /// Contains: timestamp, bid_price, ask_price, quantities, exchange info
-    /// For DEX: also includes bid_route_summary, ask_route_summary, bid_route_data, ask_route_data
-    pub buy_price_data: PriceData,
-    /// Full price response data for sell side from get_price call
-    /// Contains: timestamp, bid_price, ask_price, quantities, exchange info
-    /// For DEX: also includes bid_route_summary, ask_route_summary, bid_route_data, ask_route_data
-    pub sell_price_data: PriceData,
+    /// Effective cost to acquire (ask × (1 + fee))
+    #[serde(alias = "buy_price")]
+    pub effective_ask: f64,
+    /// Effective proceeds when disposing (bid × (1 − fee))
+    #[serde(alias = "sell_price")]
+    pub effective_bid: f64,
+    /// Arbitrage spread per unit (effective_bid − effective_ask), net of fees
+    #[serde(alias = "profit")]
+    pub spread: f64,
+    /// Spread as percentage ((spread / effective_ask) × 100), net of fees
+    #[serde(alias = "profit_percentage")]
+    pub spread_percentage: f64,
+    /// Maximum executable quantity (min of available depth on both legs)
+    #[serde(alias = "buy_quantity", alias = "sell_quantity")]
+    pub executable_quantity: f64,
+    /// Full price data for the source leg (acquire side)
+    #[serde(alias = "buy_price_data")]
+    pub source_leg: PriceData,
+    /// Full price data for the destination leg (dispose side)
+    #[serde(alias = "sell_price_data")]
+    pub destination_leg: PriceData,
 }
 
 impl ArbitrageOpportunity {
-    /// Calculates total profit (profit * quantity)
+    /// Total profit in quote currency (spread × executable quantity)
     pub fn total_profit(&self) -> f64 {
-        let quantity = self.buy_quantity.min(self.sell_quantity);
-        self.profit * quantity
+        self.spread * self.executable_quantity
     }
 }
