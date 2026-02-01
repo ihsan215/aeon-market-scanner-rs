@@ -23,4 +23,13 @@ pub struct RouteSummary {
     pub amount_in: String,
     #[serde(rename = "amountOut")]
     pub amount_out: String,
+    /// Gas limit for the swap (wei units)
+    #[serde(default)]
+    pub gas: Option<String>,
+    /// Gas price in wei
+    #[serde(rename = "gasPrice", default)]
+    pub gas_price: Option<String>,
+    /// Gas cost in USD
+    #[serde(rename = "gasUsd", default)]
+    pub gas_usd: Option<String>,
 }

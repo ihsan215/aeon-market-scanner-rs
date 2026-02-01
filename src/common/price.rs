@@ -41,4 +41,13 @@ pub struct DexRouteSummary {
     pub amount_out: f64,
     pub amount_in_wei: String,
     pub amount_out_wei: String,
+    /// Gas limit for the swap
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas: Option<String>,
+    /// Gas price in wei
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas_price: Option<String>,
+    /// Gas cost in USD
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas_usd: Option<f64>,
 }

@@ -10,8 +10,8 @@ pub use cex::{
 };
 
 pub use common::{
-    CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, Exchange, ExchangeTrait,
-    MarketScannerError,
+    CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, DexRouteSummary, Exchange,
+    ExchangeTrait, MarketScannerError,
 };
 pub use dex::KyberSwap;
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};

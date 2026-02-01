@@ -140,6 +140,13 @@ impl DEXTrait for KyberSwap {
             amount_out: wei_to_eth(&bid_data.route_summary.amount_out, base_token.decimal)?,
             amount_in_wei: bid_data.route_summary.amount_in.clone(),
             amount_out_wei: bid_data.route_summary.amount_out.clone(),
+            gas: bid_data.route_summary.gas.clone(),
+            gas_price: bid_data.route_summary.gas_price.clone(),
+            gas_usd: bid_data
+                .route_summary
+                .gas_usd
+                .as_ref()
+                .and_then(|s| s.parse::<f64>().ok()),
         };
 
         let bid_route_data = serde_json::to_value(&bid_data).ok();
@@ -196,6 +203,13 @@ impl DEXTrait for KyberSwap {
             amount_out_wei: ask_data.route_summary.amount_out.clone(),
             amount_in: wei_to_eth(&ask_data.route_summary.amount_in, base_token.decimal)?,
             amount_out: wei_to_eth(&ask_data.route_summary.amount_out, quote_token.decimal)?,
+            gas: ask_data.route_summary.gas.clone(),
+            gas_price: ask_data.route_summary.gas_price.clone(),
+            gas_usd: ask_data
+                .route_summary
+                .gas_usd
+                .as_ref()
+                .and_then(|s| s.parse::<f64>().ok()),
         };
 
         // Store full route data as JSON

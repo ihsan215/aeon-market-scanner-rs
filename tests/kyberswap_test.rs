@@ -1,15 +1,47 @@
 mod scanner_common;
 
-use aeon_market_scanner_rs::{DEXTrait, DexAggregator, Exchange, ExchangeTrait, KyberSwap};
+use aeon_market_scanner_rs::{
+    DEXTrait, DexAggregator, DexRouteSummary, Exchange, ExchangeTrait, KyberSwap,
+};
 use scanner_common::{
     create_base_eth, create_base_usdc, create_bsc_bnb, create_bsc_usdt, create_eth_eth,
     create_eth_usdt,
 };
+use std::time::Duration;
 
 const QUOTE_AMOUNT: f64 = 1000.0;
+/// Delay before API-calling tests to avoid KyberSwap rate limiting.
+/// For best effect run with: cargo test kyberswap -- --test-threads=1
+const DELAY_BETWEEN_TESTS: Duration = Duration::from_secs(2);
+
+fn print_route_summary(label: &str, route: &DexRouteSummary) {
+    println!("\n=== {} Route Summary ===", label);
+    println!(
+        "Token In: {}, Token Out: {}",
+        route.token_in, route.token_out
+    );
+    println!(
+        "Amount In: {}, Amount Out: {}",
+        route.amount_in, route.amount_out
+    );
+    println!(
+        "Amount In Wei: {}, Amount Out Wei: {}",
+        route.amount_in_wei, route.amount_out_wei
+    );
+    if let Some(ref gas) = route.gas {
+        println!("Gas: {}", gas);
+    }
+    if let Some(ref gas_price) = route.gas_price {
+        println!("Gas Price (wei): {}", gas_price);
+    }
+    if let Some(gas_usd) = route.gas_usd {
+        println!("Gas USD: ${}", gas_usd);
+    }
+}
 
 #[tokio::test]
 async fn test_kyberswap_health_check() {
+    tokio::time::sleep(DELAY_BETWEEN_TESTS).await;
     let exchange = KyberSwap::new();
     let result = exchange.health_check().await;
 
@@ -34,6 +66,7 @@ async fn test_kyberswap_exchange_name() {
 
 #[tokio::test]
 async fn test_kyberswap_get_price_ethereum() {
+    tokio::time::sleep(DELAY_BETWEEN_TESTS).await;
     let exchange = KyberSwap::new();
     let eth_token = create_eth_eth();
     let usdt_token = create_eth_usdt();
@@ -92,34 +125,10 @@ async fn test_kyberswap_get_price_ethereum() {
 
     // Log route summaries
     if let Some(ref bid_route) = price.bid_route_summary {
-        println!("\n=== BID Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            bid_route.token_in, bid_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            bid_route.amount_in, bid_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            bid_route.amount_in_wei, bid_route.amount_out_wei
-        );
+        print_route_summary("BID", bid_route);
     }
     if let Some(ref ask_route) = price.ask_route_summary {
-        println!("\n=== ASK Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            ask_route.token_in, ask_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            ask_route.amount_in, ask_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            ask_route.amount_in_wei, ask_route.amount_out_wei
-        );
+        print_route_summary("ASK", ask_route);
     }
 
     // Log full route data if available
@@ -143,6 +152,7 @@ async fn test_kyberswap_get_price_ethereum() {
 
 #[tokio::test]
 async fn test_kyberswap_get_price_base() {
+    tokio::time::sleep(DELAY_BETWEEN_TESTS).await;
     let exchange = KyberSwap::new();
     let eth_token = create_base_eth();
     let usdc_token = create_base_usdc();
@@ -152,7 +162,8 @@ async fn test_kyberswap_get_price_base() {
 
     assert!(
         result.is_ok(),
-        "Should be able to get ETHUSDC price on Base"
+        "Should be able to get ETHUSDC price on Base: {:?}",
+        result.err()
     );
     let price = result.unwrap();
 
@@ -178,39 +189,16 @@ async fn test_kyberswap_get_price_base() {
 
     // Log route summaries
     if let Some(ref bid_route) = price.bid_route_summary {
-        println!("\n=== BID Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            bid_route.token_in, bid_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            bid_route.amount_in, bid_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            bid_route.amount_in_wei, bid_route.amount_out_wei
-        );
+        print_route_summary("BID", bid_route);
     }
     if let Some(ref ask_route) = price.ask_route_summary {
-        println!("\n=== ASK Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            ask_route.token_in, ask_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            ask_route.amount_in, ask_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            ask_route.amount_in_wei, ask_route.amount_out_wei
-        );
+        print_route_summary("ASK", ask_route);
     }
 }
 
 #[tokio::test]
 async fn test_kyberswap_get_price_bsc() {
+    tokio::time::sleep(DELAY_BETWEEN_TESTS).await;
     println!("===== BSC CHAIN TEST =======");
 
     let exchange = KyberSwap::new();
@@ -245,34 +233,10 @@ async fn test_kyberswap_get_price_bsc() {
 
     // Log route summaries
     if let Some(ref bid_route) = price.bid_route_summary {
-        println!("\n=== BID Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            bid_route.token_in, bid_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            bid_route.amount_in, bid_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            bid_route.amount_in_wei, bid_route.amount_out_wei
-        );
+        print_route_summary("BID", bid_route);
     }
     if let Some(ref ask_route) = price.ask_route_summary {
-        println!("\n=== ASK Route Summary ===");
-        println!(
-            "Token In: {}, Token Out: {}",
-            ask_route.token_in, ask_route.token_out
-        );
-        println!(
-            "Amount In: {}, Amount Out: {}",
-            ask_route.amount_in, ask_route.amount_out
-        );
-        println!(
-            "Amount In Wei: {}, Amount Out Wei: {}",
-            ask_route.amount_in_wei, ask_route.amount_out_wei
-        );
+        print_route_summary("ASK", ask_route);
     }
 
     // Log full route data if available
@@ -296,6 +260,7 @@ async fn test_kyberswap_get_price_bsc() {
 
 #[tokio::test]
 async fn test_kyberswap_get_price_different_chains() {
+    // No delay: fails at validation before API call
     let exchange = KyberSwap::new();
     let eth_token = create_eth_eth();
     let usdc_token = create_base_usdc();
