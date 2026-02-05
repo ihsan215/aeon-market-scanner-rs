@@ -55,7 +55,9 @@ async fn test_scan_cex_arbitrage_ethusdt() {
         println!("  Total profit: ${:.4}", opp.total_profit());
         println!(
             "  Source commission: {:.4}% | Dest commission: {:.4}% | Total commission (USD): ${:.4}",
-            opp.source_commission_percent, opp.destination_commission_percent, opp.total_commission
+            opp.source_commission_percent,
+            opp.destination_commission_percent,
+            opp.total_commission_quote
         );
 
         // Show full price data from buy and sell responses

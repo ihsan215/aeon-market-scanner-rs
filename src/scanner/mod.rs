@@ -184,9 +184,12 @@ impl ArbitrageScanner {
 
                 let (src_comm_rate, dest_comm_rate) =
                     Self::extract_commission_rates(source_data, dest_data);
-                let total_commission =
-                    *effective_ask * executable_quantity * (src_comm_rate / 100.0)
-                        + *effective_bid * executable_quantity * (dest_comm_rate / 100.0);
+                // Both in quote currency (e.g. USD): buy-side fee on notional, sell-side fee on notional
+                let source_commission_quote =
+                    *effective_ask * executable_quantity * (src_comm_rate / 100.0);
+                let destination_commission_quote =
+                    *effective_bid * executable_quantity * (dest_comm_rate / 100.0);
+                let total_commission_quote = source_commission_quote + destination_commission_quote;
 
                 opportunities.push(ArbitrageOpportunity {
                     source_exchange: source_exchange.clone(),
@@ -199,7 +202,7 @@ impl ArbitrageScanner {
                     executable_quantity,
                     source_commission_percent: src_comm_rate,
                     destination_commission_percent: dest_comm_rate,
-                    total_commission,
+                    total_commission_quote,
                     source_leg: source_data.clone(),
                     destination_leg: dest_data.clone(),
                 });

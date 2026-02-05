@@ -45,8 +45,8 @@ pub struct ArbitrageOpportunity {
     pub source_commission_percent: f64,
     /// Destination leg commission rate in percent (e.g. 0.1 = 0.1%)
     pub destination_commission_percent: f64,
-    /// Total commission in quote currency (USD for USDT pairs) for executable_quantity
-    pub total_commission: f64,
+    /// Total commission in quote currency for executable_quantity
+    pub total_commission_quote: f64,
     /// Full price data for the source leg (acquire side)
     #[serde(alias = "buy_price_data")]
     pub source_leg: PriceData,

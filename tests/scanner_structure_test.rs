@@ -43,7 +43,9 @@ async fn test_arbitrage_opportunity_structure_ethusdt() {
     println!("  Spread amount: ${:.4}", opp.spread);
     println!(
         "  Source commission: {:.4}% | Dest: {:.4}% | Total commission (USD): ${:.4}",
-        opp.source_commission_percent, opp.destination_commission_percent, opp.total_commission
+        opp.source_commission_percent,
+        opp.destination_commission_percent,
+        opp.total_commission_quote
     );
 
     // Verify all fields are populated
