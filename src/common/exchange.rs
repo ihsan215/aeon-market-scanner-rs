@@ -71,7 +71,20 @@ pub trait ExchangeTrait: Send + Sync {
 // Common Cex Traits
 #[async_trait]
 pub trait CEXTrait: ExchangeTrait {
+    /// Whether this CEX supports fetching price via WebSocket (same format as [get_price]).
+    fn supports_websocket(&self) -> bool;
+
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError>;
+
+    /// Same format as [get_price]; uses WebSocket when [supports_websocket] is true.
+    /// Default: returns error if WebSocket is not supported for this exchange.
+    async fn get_price_websocket(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+        let _ = symbol;
+        Err(MarketScannerError::ApiError(format!(
+            "{} does not support WebSocket",
+            self.exchange_name()
+        )))
+    }
 }
 
 #[async_trait]

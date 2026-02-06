@@ -50,6 +50,10 @@ impl ExchangeTrait for OKX {
 
 #[async_trait]
 impl CEXTrait for OKX {
+    fn supports_websocket(&self) -> bool {
+        false
+    }
+
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {

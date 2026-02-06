@@ -49,6 +49,10 @@ impl ExchangeTrait for Cryptocom {
 
 #[async_trait]
 impl CEXTrait for Cryptocom {
+    fn supports_websocket(&self) -> bool {
+        false
+    }
+
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         if symbol.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(

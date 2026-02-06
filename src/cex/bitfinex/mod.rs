@@ -44,6 +44,10 @@ impl ExchangeTrait for Bitfinex {
 
 #[async_trait]
 impl CEXTrait for Bitfinex {
+    fn supports_websocket(&self) -> bool {
+        false
+    }
+
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
         // Validate symbol is not empty
         if symbol.is_empty() {
