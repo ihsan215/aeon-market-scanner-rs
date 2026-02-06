@@ -12,5 +12,6 @@ pub use errors::MarketScannerError;
 pub use exchange::{CEXTrait, CexExchange, DEXTrait, DexAggregator, Exchange, ExchangeTrait};
 pub use price::{CexPrice, DexPrice, DexRouteSummary};
 pub use utils::{
-    find_mid_price, format_symbol_for_exchange, get_timestamp_millis, normalize_symbol, parse_f64,
+    find_mid_price, format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis,
+    normalize_symbol, parse_f64, standard_symbol_for_cex_ws_response,
 };

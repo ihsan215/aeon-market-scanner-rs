@@ -3,12 +3,17 @@ mod types;
 use crate::cex::bitfinex::types::BitfinexOrderBookResponse;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, normalize_symbol,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, normalize_symbol,
+    standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use tokio::time::{timeout, Duration};
 
 const BITFINEX_API_BASE: &str = "https://api-pub.bitfinex.com/v2";
+const BITFINEX_WS_URL: &str = "wss://api-pub.bitfinex.com/ws/2";
+const WS_RECV_TIMEOUT: Duration = Duration::from_secs(15);
 
 create_exchange!(Bitfinex);
 
@@ -45,7 +50,7 @@ impl ExchangeTrait for Bitfinex {
 #[async_trait]
 impl CEXTrait for Bitfinex {
     fn supports_websocket(&self) -> bool {
-        false
+        true
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
@@ -161,6 +166,99 @@ impl CEXTrait for Bitfinex {
         } else {
             normalize_symbol(symbol)
         };
+
+        Ok(CexPrice {
+            symbol: standard_symbol,
+            mid_price,
+            bid_price: bid,
+            ask_price: ask,
+            bid_qty,
+            ask_qty,
+            timestamp: get_timestamp_millis(),
+            exchange: Exchange::Cex(CexExchange::Bitfinex),
+        })
+    }
+
+    async fn get_price_websocket(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+        if symbol.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "Symbol cannot be empty".to_string(),
+            ));
+        }
+
+        let bitfinex_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Bitfinex)?;
+
+        let (mut ws_stream, _) = tokio_tungstenite::connect_async(BITFINEX_WS_URL)
+            .await
+            .map_err(|e| {
+                MarketScannerError::ApiError(format!("Bitfinex WebSocket connect: {}", e))
+            })?;
+
+        let subscribe_msg = serde_json::json!({
+            "event": "subscribe",
+            "channel": "ticker",
+            "symbol": bitfinex_symbol
+        });
+        ws_stream
+            .send(
+                tokio_tungstenite::tungstenite::Message::Text(
+                    subscribe_msg.to_string(),
+                ),
+            )
+            .await
+            .map_err(|e| {
+                MarketScannerError::ApiError(format!("Bitfinex WebSocket send: {}", e))
+            })?;
+
+        let (_write, mut read) = ws_stream.split();
+
+        // Read until we get ticker data: [chanId, [BID, BID_SIZE, ASK, ASK_SIZE, ...]]
+        let mut bid = 0.0_f64;
+        let mut bid_qty = 0.0_f64;
+        let mut ask = 0.0_f64;
+        let mut ask_qty = 0.0_f64;
+
+        while let Some(Ok(msg)) = timeout(WS_RECV_TIMEOUT, read.next()).await.ok().flatten() {
+            let text = match msg.into_text() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let value: serde_json::Value = match serde_json::from_str(&text) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            // Skip event objects (info, subscribed, etc.)
+            if value.get("event").is_some() {
+                continue;
+            }
+            let arr = match value.as_array() {
+                Some(a) if a.len() >= 2 => a,
+                _ => continue,
+            };
+            let data = match arr[1].as_array() {
+                Some(d) if d.len() >= 4 => d,
+                _ => continue,
+            };
+            // [BID, BID_SIZE, ASK, ASK_SIZE, ...] - indices 0,1,2,3
+            bid = data[0].as_f64().ok_or_else(|| {
+                MarketScannerError::ApiError("Bitfinex WebSocket: invalid BID".to_string())
+            })?;
+            bid_qty = data[1].as_f64().unwrap_or(0.0).abs();
+            ask = data[2].as_f64().ok_or_else(|| {
+                MarketScannerError::ApiError("Bitfinex WebSocket: invalid ASK".to_string())
+            })?;
+            ask_qty = data[3].as_f64().unwrap_or(0.0).abs();
+            break;
+        }
+
+        if bid <= 0.0 || ask <= 0.0 {
+            return Err(MarketScannerError::ApiError(
+                "Bitfinex WebSocket: no ticker data received".to_string(),
+            ));
+        }
+
+        let mid_price = find_mid_price(bid, ask);
+        let standard_symbol = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bitfinex);
 
         Ok(CexPrice {
             symbol: standard_symbol,

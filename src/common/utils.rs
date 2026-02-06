@@ -247,3 +247,29 @@ pub fn format_symbol_for_exchange(
 
     Ok(formatted)
 }
+
+/// Symbol string to use for WebSocket subscribe/connect for the given exchange.
+/// Same as [format_symbol_for_exchange] for most exchanges; Binance uses lowercase for stream name.
+pub fn format_symbol_for_exchange_ws(
+    symbol: &str,
+    exchange: &CexExchange,
+) -> Result<String, MarketScannerError> {
+    let formatted = format_symbol_for_exchange(symbol, exchange)?;
+    let ws_symbol = match exchange {
+        CexExchange::Binance => formatted.to_lowercase(),
+        _ => formatted,
+    };
+    Ok(ws_symbol)
+}
+
+/// Standard symbol string for [CexPrice] when returning from WebSocket (same format as REST).
+/// E.g. Bitfinex uses UST instead of USDT in the pair name.
+pub fn standard_symbol_for_cex_ws_response(symbol: &str, exchange: &CexExchange) -> String {
+    let normalized = normalize_symbol(symbol);
+    match exchange {
+        CexExchange::Bitfinex if normalized.ends_with("USDT") => {
+            normalized.replace("USDT", "UST")
+        }
+        _ => normalized,
+    }
+}

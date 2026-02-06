@@ -1,7 +1,8 @@
 mod types;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, normalize_symbol, parse_f64,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, normalize_symbol,
+    parse_f64, standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -88,8 +89,8 @@ impl CEXTrait for Binance {
             ));
         }
 
-        let binance_symbol = format_symbol_for_exchange(symbol, &CexExchange::Binance)?;
-        let stream_name = format!("{}@bookTicker", binance_symbol.to_lowercase());
+        let binance_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Binance)?;
+        let stream_name = format!("{}@bookTicker", binance_symbol);
         let url = format!("{}/{}", BINANCE_WS_BASE, stream_name);
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.map_err(|e| {
@@ -120,7 +121,7 @@ impl CEXTrait for Binance {
         let bid_qty = parse_f64(&ticker.B, "bid quantity")?;
         let ask_qty = parse_f64(&ticker.A, "ask quantity")?;
         let mid_price = find_mid_price(bid, ask);
-        let standard_symbol = normalize_symbol(&ticker.s);
+        let standard_symbol = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Binance);
 
         Ok(CexPrice {
             symbol: standard_symbol,
