@@ -257,6 +257,20 @@ pub fn format_symbol_for_exchange_ws(
     let formatted = format_symbol_for_exchange(symbol, exchange)?;
     let ws_symbol = match exchange {
         CexExchange::Binance => formatted.to_lowercase(),
+        CexExchange::Kraken => {
+            // WS v2 uses BASE/QUOTE format (e.g. BTC/USDT) - readable, not XBT
+            let n = crate::common::normalize_symbol(symbol);
+            if n.len() >= 7 && n.ends_with("USDT") {
+                format!("{}/USDT", &n[..n.len() - 4])
+            } else if n.len() >= 6 && n.ends_with("USD") {
+                format!("{}/USD", &n[..n.len() - 3])
+            } else if n.len() >= 6 {
+                let split = n.len() - 3;
+                format!("{}/{}", &n[..split], &n[split..])
+            } else {
+                formatted
+            }
+        }
         _ => formatted,
     };
     Ok(ws_symbol)

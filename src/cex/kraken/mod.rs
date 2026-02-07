@@ -3,12 +3,17 @@ mod types;
 use crate::cex::kraken::types::KrakenDepthResponse;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, parse_f64,
+    standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use std::collections::BTreeMap;
+use tokio::sync::mpsc;
 
 const KRAKEN_API_BASE: &str = "https://api.kraken.com/0/public";
+const KRAKEN_WS_URL: &str = "wss://ws.kraken.com/v2";
 
 create_exchange!(Kraken);
 
@@ -48,7 +53,7 @@ impl ExchangeTrait for Kraken {
 #[async_trait]
 impl CEXTrait for Kraken {
     fn supports_websocket(&self) -> bool {
-        false
+        true
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
@@ -168,5 +173,170 @@ impl CEXTrait for Kraken {
             timestamp: get_timestamp_millis(),
             exchange: Exchange::Cex(CexExchange::Kraken),
         })
+    }
+
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
+        if symbol.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "Symbol cannot be empty".to_string(),
+            ));
+        }
+
+        let kraken_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Kraken)?;
+
+        let (mut ws_stream, _) = tokio_tungstenite::connect_async(KRAKEN_WS_URL)
+            .await
+            .map_err(|e| {
+                MarketScannerError::ApiError(format!("Kraken WebSocket connect: {}", e))
+            })?;
+
+        let subscribe_msg = serde_json::json!({
+            "method": "subscribe",
+            "params": {
+                "channel": "book",
+                "symbol": [kraken_symbol],
+                "depth": 10
+            }
+        });
+
+        ws_stream
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                subscribe_msg.to_string(),
+            ))
+            .await
+            .map_err(|e| MarketScannerError::ApiError(format!("Kraken WebSocket send: {}", e)))?;
+
+        let (mut write, mut read) = ws_stream.split();
+        let (tx, rx) = mpsc::channel(64);
+        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Kraken);
+
+        tokio::spawn(async move {
+            let mut bids: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
+            let mut asks: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
+
+            fn apply_kraken_levels(
+                map: &mut BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>,
+                arr: Option<&serde_json::Value>,
+            ) {
+                let arr = match arr.and_then(|a| a.as_array()) {
+                    Some(a) => a,
+                    None => return,
+                };
+                for level in arr {
+                    let obj = match level.as_object() {
+                        Some(o) => o,
+                        None => continue,
+                    };
+                    let price_f = obj.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let qty_f = obj.get("qty").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let price = rust_decimal::Decimal::from_f64_retain(price_f)
+                        .unwrap_or(rust_decimal::Decimal::ZERO);
+                    let qty = rust_decimal::Decimal::from_f64_retain(qty_f)
+                        .unwrap_or(rust_decimal::Decimal::ZERO);
+                    if qty.is_zero() {
+                        map.remove(&price);
+                    } else {
+                        map.insert(price, qty);
+                    }
+                }
+            }
+
+            fn best_bid_ask(
+                bids: &BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>,
+                asks: &BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>,
+            ) -> Option<(f64, f64, f64, f64)> {
+                let (bid_price, bid_qty) = bids.iter().rev().next()?;
+                let (ask_price, ask_qty) = asks.iter().next()?;
+                let bid = bid_price.to_string().parse::<f64>().ok()?;
+                let ask = ask_price.to_string().parse::<f64>().ok()?;
+                let bq = bid_qty.to_string().parse::<f64>().ok()?;
+                let aq = ask_qty.to_string().parse::<f64>().ok()?;
+                if bid <= 0.0 || ask <= 0.0 {
+                    return None;
+                }
+                Some((bid, ask, bq, aq))
+            }
+
+            while let Some(Ok(msg)) = read.next().await {
+                let text = match msg.into_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let value: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                // Server ping: respond with pong to keep connection alive
+                if value.get("method").and_then(|m| m.as_str()) == Some("ping") {
+                    let req_id = value.get("req_id").cloned();
+                    let pong = match req_id {
+                        Some(id) => serde_json::json!({ "method": "pong", "req_id": id }),
+                        None => serde_json::json!({ "method": "pong" }),
+                    };
+                    let _ = write
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            pong.to_string(),
+                        ))
+                        .await;
+                    continue;
+                }
+
+                // Heartbeat: {"channel":"heartbeat"} - no response needed, skip
+                if value.get("channel").and_then(|c| c.as_str()) == Some("heartbeat") {
+                    continue;
+                }
+
+                // Subscribe ack: {"method":"subscribe","result":{...},"success":true}
+                if value.get("method").and_then(|m| m.as_str()) == Some("subscribe") {
+                    continue;
+                }
+
+                // Book snapshot/update: channel=book, type=snapshot|update, data=[{bids, asks}]
+                if value.get("channel").and_then(|c| c.as_str()) != Some("book") {
+                    continue;
+                }
+
+                let data = match value.get("data").and_then(|d| d.as_array()) {
+                    Some(d) if !d.is_empty() => &d[0],
+                    _ => continue,
+                };
+
+                let msg_type = value.get("type").and_then(|t| t.as_str());
+                let data_bids = data.get("bids");
+                let data_asks = data.get("asks");
+
+                if msg_type == Some("snapshot") {
+                    bids.clear();
+                    asks.clear();
+                }
+                apply_kraken_levels(&mut bids, data_bids);
+                apply_kraken_levels(&mut asks, data_asks);
+
+                let (bid, ask, bid_qty, ask_qty) = match best_bid_ask(&bids, &asks) {
+                    Some(b) => b,
+                    None => continue,
+                };
+
+                let price = CexPrice {
+                    symbol: symbol_std.clone(),
+                    mid_price: find_mid_price(bid, ask),
+                    bid_price: bid,
+                    ask_price: ask,
+                    bid_qty,
+                    ask_qty,
+                    timestamp: get_timestamp_millis(),
+                    exchange: Exchange::Cex(CexExchange::Kraken),
+                };
+                if tx.send(price).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(rx)
     }
 }
