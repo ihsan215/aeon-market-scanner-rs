@@ -9,11 +9,10 @@ use crate::common::{
 use crate::create_exchange;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
-use tokio::time::{timeout, Duration};
+use tokio::sync::mpsc;
 
 const BITFINEX_API_BASE: &str = "https://api-pub.bitfinex.com/v2";
 const BITFINEX_WS_URL: &str = "wss://api-pub.bitfinex.com/ws/2";
-const WS_RECV_TIMEOUT: Duration = Duration::from_secs(15);
 
 create_exchange!(Bitfinex);
 
@@ -179,7 +178,11 @@ impl CEXTrait for Bitfinex {
         })
     }
 
-    async fn get_price_websocket(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+    /// Connection stays open; incoming ticker updates are sent over the returned Receiver.
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
         if symbol.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
                 "Symbol cannot be empty".to_string(),
@@ -200,75 +203,65 @@ impl CEXTrait for Bitfinex {
             "symbol": bitfinex_symbol
         });
         ws_stream
-            .send(
-                tokio_tungstenite::tungstenite::Message::Text(
-                    subscribe_msg.to_string(),
-                ),
-            )
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                subscribe_msg.to_string(),
+            ))
             .await
             .map_err(|e| {
                 MarketScannerError::ApiError(format!("Bitfinex WebSocket send: {}", e))
             })?;
 
         let (_write, mut read) = ws_stream.split();
+        let (tx, rx) = mpsc::channel(64);
+        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bitfinex);
 
-        // Read until we get ticker data: [chanId, [BID, BID_SIZE, ASK, ASK_SIZE, ...]]
-        let mut bid = 0.0_f64;
-        let mut bid_qty = 0.0_f64;
-        let mut ask = 0.0_f64;
-        let mut ask_qty = 0.0_f64;
-
-        while let Some(Ok(msg)) = timeout(WS_RECV_TIMEOUT, read.next()).await.ok().flatten() {
-            let text = match msg.into_text() {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            let value: serde_json::Value = match serde_json::from_str(&text) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            // Skip event objects (info, subscribed, etc.)
-            if value.get("event").is_some() {
-                continue;
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = read.next().await {
+                let text = match msg.into_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let value: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if value.get("event").is_some() {
+                    continue;
+                }
+                let arr = match value.as_array() {
+                    Some(a) if a.len() >= 2 => a,
+                    _ => continue,
+                };
+                let data = match arr[1].as_array() {
+                    Some(d) if d.len() >= 4 => d,
+                    _ => continue,
+                };
+                let bid = match data[0].as_f64() {
+                    Some(b) if b > 0.0 => b,
+                    _ => continue,
+                };
+                let bid_qty = data[1].as_f64().unwrap_or(0.0).abs();
+                let ask = match data[2].as_f64() {
+                    Some(a) if a > 0.0 => a,
+                    _ => continue,
+                };
+                let ask_qty = data[3].as_f64().unwrap_or(0.0).abs();
+                let price = CexPrice {
+                    symbol: symbol_std.clone(),
+                    mid_price: find_mid_price(bid, ask),
+                    bid_price: bid,
+                    ask_price: ask,
+                    bid_qty,
+                    ask_qty,
+                    timestamp: get_timestamp_millis(),
+                    exchange: Exchange::Cex(CexExchange::Bitfinex),
+                };
+                if tx.send(price).await.is_err() {
+                    break;
+                }
             }
-            let arr = match value.as_array() {
-                Some(a) if a.len() >= 2 => a,
-                _ => continue,
-            };
-            let data = match arr[1].as_array() {
-                Some(d) if d.len() >= 4 => d,
-                _ => continue,
-            };
-            // [BID, BID_SIZE, ASK, ASK_SIZE, ...] - indices 0,1,2,3
-            bid = data[0].as_f64().ok_or_else(|| {
-                MarketScannerError::ApiError("Bitfinex WebSocket: invalid BID".to_string())
-            })?;
-            bid_qty = data[1].as_f64().unwrap_or(0.0).abs();
-            ask = data[2].as_f64().ok_or_else(|| {
-                MarketScannerError::ApiError("Bitfinex WebSocket: invalid ASK".to_string())
-            })?;
-            ask_qty = data[3].as_f64().unwrap_or(0.0).abs();
-            break;
-        }
+        });
 
-        if bid <= 0.0 || ask <= 0.0 {
-            return Err(MarketScannerError::ApiError(
-                "Bitfinex WebSocket: no ticker data received".to_string(),
-            ));
-        }
-
-        let mid_price = find_mid_price(bid, ask);
-        let standard_symbol = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bitfinex);
-
-        Ok(CexPrice {
-            symbol: standard_symbol,
-            mid_price,
-            bid_price: bid,
-            ask_price: ask,
-            bid_qty,
-            ask_qty,
-            timestamp: get_timestamp_millis(),
-            exchange: Exchange::Cex(CexExchange::Bitfinex),
-        })
+        Ok(rx)
     }
 }

@@ -45,6 +45,7 @@ impl ExchangeTrait for Btcturk {
 #[async_trait]
 impl CEXTrait for Btcturk {
     fn supports_websocket(&self) -> bool {
+        // No added because it is not stable yet
         false
     }
 

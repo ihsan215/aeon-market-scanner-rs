@@ -1,18 +1,17 @@
 mod types;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, normalize_symbol,
-    parse_f64, standard_symbol_for_cex_ws_response,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis,
+    normalize_symbol, parse_f64, standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
 use futures::StreamExt;
-use tokio::time::{Duration, timeout};
+use tokio::sync::mpsc;
 use types::{BinanceBookTickerResponse, BinanceBookTickerWs};
 
 const BINANCE_API_BASE: &str = "https://api.binance.com/api/v3";
 const BINANCE_WS_BASE: &str = "wss://stream.binance.com:9443/ws";
-const WS_RECV_TIMEOUT: Duration = Duration::from_secs(15);
 
 create_exchange!(Binance);
 
@@ -82,7 +81,12 @@ impl CEXTrait for Binance {
         })
     }
 
-    async fn get_price_websocket(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+    /// Connection stays open; incoming prices are sent over the returned Receiver.
+    /// When the channel closes (Receiver returns None), the connection has closed.
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
         if symbol.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
                 "Symbol cannot be empty".to_string(),
@@ -98,40 +102,44 @@ impl CEXTrait for Binance {
         })?;
 
         let (_write, mut read) = ws_stream.split();
+        let (tx, rx) = mpsc::channel(64);
+        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Binance);
 
-        let msg = timeout(WS_RECV_TIMEOUT, read.next())
-            .await
-            .map_err(|_| {
-                MarketScannerError::ApiError("Binance WebSocket: receive timeout".to_string())
-            })?
-            .ok_or_else(|| {
-                MarketScannerError::ApiError("Binance WebSocket: stream ended".to_string())
-            })?
-            .map_err(|e| MarketScannerError::ApiError(format!("Binance WebSocket: {}", e)))?;
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = read.next().await {
+                let text = match msg.into_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let ticker: BinanceBookTickerWs = match serde_json::from_str(&text) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let (bid, ask, bid_qty, ask_qty) = match (
+                    parse_f64(&ticker.b, "bid"),
+                    parse_f64(&ticker.a, "ask"),
+                    parse_f64(&ticker.B, "bidQty"),
+                    parse_f64(&ticker.A, "askQty"),
+                ) {
+                    (Ok(b), Ok(a), Ok(bq), Ok(aq)) => (b, a, bq, aq),
+                    _ => continue,
+                };
+                let price = CexPrice {
+                    symbol: symbol_std.clone(),
+                    mid_price: find_mid_price(bid, ask),
+                    bid_price: bid,
+                    ask_price: ask,
+                    bid_qty,
+                    ask_qty,
+                    timestamp: get_timestamp_millis(),
+                    exchange: Exchange::Cex(CexExchange::Binance),
+                };
+                if tx.send(price).await.is_err() {
+                    break;
+                }
+            }
+        });
 
-        let text = msg
-            .into_text()
-            .map_err(|e| MarketScannerError::ApiError(format!("Binance WebSocket: {}", e)))?;
-
-        let ticker: BinanceBookTickerWs = serde_json::from_str(&text)
-            .map_err(|e| MarketScannerError::ApiError(format!("Binance WebSocket parse: {}", e)))?;
-
-        let bid = parse_f64(&ticker.b, "bid price")?;
-        let ask = parse_f64(&ticker.a, "ask price")?;
-        let bid_qty = parse_f64(&ticker.B, "bid quantity")?;
-        let ask_qty = parse_f64(&ticker.A, "ask quantity")?;
-        let mid_price = find_mid_price(bid, ask);
-        let standard_symbol = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Binance);
-
-        Ok(CexPrice {
-            symbol: standard_symbol,
-            mid_price,
-            bid_price: bid,
-            ask_price: ask,
-            bid_qty,
-            ask_qty,
-            timestamp: get_timestamp_millis(),
-            exchange: Exchange::Cex(CexExchange::Binance),
-        })
+        Ok(rx)
     }
 }

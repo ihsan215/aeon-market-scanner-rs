@@ -76,12 +76,16 @@ pub trait CEXTrait: ExchangeTrait {
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError>;
 
-    /// Same format as [get_price]; uses WebSocket when [supports_websocket] is true.
-    /// Default: returns error if WebSocket is not supported for this exchange.
-    async fn get_price_websocket(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
+    /// Continuous price feed: connection stays open, CexPrice is sent over the channel.
+    /// When the receiver returns None, the connection has closed.
+    /// Default: returns error if this exchange does not support streaming WebSocket.
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<tokio::sync::mpsc::Receiver<CexPrice>, MarketScannerError> {
         let _ = symbol;
         Err(MarketScannerError::ApiError(format!(
-            "{} does not support WebSocket",
+            "{} does not support streaming WebSocket",
             self.exchange_name()
         )))
     }

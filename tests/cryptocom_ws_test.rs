@@ -1,19 +1,19 @@
-//! Bitfinex WebSocket test: continuous feed, print 10 prices then stop.
-//! Run: cargo test bitfinex_ws -- --nocapture
+//! Crypto.com WebSocket test: stream ticker, receive 10 prices and print.
+//! Run: cargo test cryptocom_ws -- --nocapture
 
-use aeon_market_scanner_rs::{Bitfinex, CEXTrait};
+use aeon_market_scanner_rs::{CEXTrait, Cryptocom};
 
 const SYMBOL: &str = "BTCUSDT";
 
 #[tokio::test]
-async fn bitfinex_ws_stream_one_then_stop() {
-    println!("\n=== Bitfinex WebSocket stream – continuous feed (stop after 2 prices) ===\n");
+async fn cryptocom_ws_stream_ten_then_stop() {
+    println!("\n=== Crypto.com WebSocket stream (book.1) – 10 prices then stop ===\n");
 
-    let exchange = Bitfinex::new();
+    let exchange = Cryptocom::new();
     let mut rx = exchange
         .stream_price_websocket(SYMBOL)
         .await
-        .expect("WebSocket stream");
+        .expect("Crypto.com WebSocket stream");
 
     let mut count = 0u32;
     while let Some(price) = rx.recv().await {
@@ -27,9 +27,9 @@ async fn bitfinex_ws_stream_one_then_stop() {
             price.ask_qty
         );
         count += 1;
-        if count >= 2 {
+        if count >= 10 {
             break;
         }
     }
-    println!("\nReceived {} prices, receiver dropped.", count);
+    println!("\nReceived {} prices.", count);
 }

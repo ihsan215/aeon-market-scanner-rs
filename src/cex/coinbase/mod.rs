@@ -1,14 +1,18 @@
 mod types;
 
-use crate::cex::coinbase::types::CoinbaseOrderBookResponse;
+use crate::cex::coinbase::types::{CoinbaseOrderBookResponse, CoinbaseTickerWs};
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, parse_f64,
+    standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
 
 const COINBASE_API_BASE: &str = "https://api.exchange.coinbase.com";
+const COINBASE_WS_FEED: &str = "wss://ws-feed.exchange.coinbase.com";
 
 create_exchange!(Coinbase);
 
@@ -81,7 +85,7 @@ impl ExchangeTrait for Coinbase {
 #[async_trait]
 impl CEXTrait for Coinbase {
     fn supports_websocket(&self) -> bool {
-        false
+        true
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
@@ -186,5 +190,82 @@ impl CEXTrait for Coinbase {
             timestamp: get_timestamp_millis(),
             exchange: Exchange::Cex(CexExchange::Coinbase),
         })
+    }
+
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
+        if symbol.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "Symbol cannot be empty".to_string(),
+            ));
+        }
+
+        let coinbase_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Coinbase)?;
+
+        let (mut ws_stream, _) = tokio_tungstenite::connect_async(COINBASE_WS_FEED).await.map_err(
+            |e| MarketScannerError::ApiError(format!("Coinbase WebSocket connect: {}", e)),
+        )?;
+
+        let subscribe_msg = serde_json::json!({
+            "type": "subscribe",
+            "product_ids": [coinbase_symbol],
+            "channels": ["ticker"]
+        });
+        ws_stream
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                subscribe_msg.to_string(),
+            ))
+            .await
+            .map_err(|e| MarketScannerError::ApiError(format!("Coinbase WebSocket send: {}", e)))?;
+
+        let (_write, mut read) = ws_stream.split();
+        let (tx, rx) = mpsc::channel(64);
+        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Coinbase);
+
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = read.next().await {
+                let text = match msg.into_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let ticker: CoinbaseTickerWs = match serde_json::from_str(&text) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                if ticker.msg_type != "ticker" {
+                    continue;
+                }
+                let bid = match parse_f64(&ticker.best_bid, "bid") {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let ask = match parse_f64(&ticker.best_ask, "ask") {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let bid_qty = parse_f64(&ticker.best_bid_size, "bid_size").unwrap_or(0.0);
+                let ask_qty = parse_f64(&ticker.best_ask_size, "ask_size").unwrap_or(0.0);
+                if bid <= 0.0 || ask <= 0.0 {
+                    continue;
+                }
+                let price = CexPrice {
+                    symbol: symbol_std.clone(),
+                    mid_price: find_mid_price(bid, ask),
+                    bid_price: bid,
+                    ask_price: ask,
+                    bid_qty,
+                    ask_qty,
+                    timestamp: get_timestamp_millis(),
+                    exchange: Exchange::Cex(CexExchange::Coinbase),
+                };
+                if tx.send(price).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(rx)
     }
 }

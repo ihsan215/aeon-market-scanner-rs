@@ -1,19 +1,19 @@
-//! Bitfinex WebSocket test: continuous feed, print 10 prices then stop.
-//! Run: cargo test bitfinex_ws -- --nocapture
+//! Gate.io WebSocket test: stream depth via v3 (depth.subscribe), receive prices with bid/ask qty.
+//! Run: cargo test gateio_ws -- --nocapture
 
-use aeon_market_scanner_rs::{Bitfinex, CEXTrait};
+use aeon_market_scanner_rs::{CEXTrait, Gateio};
 
 const SYMBOL: &str = "BTCUSDT";
 
 #[tokio::test]
-async fn bitfinex_ws_stream_one_then_stop() {
-    println!("\n=== Bitfinex WebSocket stream – continuous feed (stop after 2 prices) ===\n");
+async fn gateio_ws_stream_ten_then_stop() {
+    println!("\n=== Gate.io WebSocket v3 (depth.subscribe) – 5 prices then stop ===\n");
 
-    let exchange = Bitfinex::new();
+    let exchange = Gateio::new();
     let mut rx = exchange
         .stream_price_websocket(SYMBOL)
         .await
-        .expect("WebSocket stream");
+        .expect("Gate.io WebSocket stream");
 
     let mut count = 0u32;
     while let Some(price) = rx.recv().await {
@@ -27,9 +27,9 @@ async fn bitfinex_ws_stream_one_then_stop() {
             price.ask_qty
         );
         count += 1;
-        if count >= 2 {
+        if count >= 5 {
             break;
         }
     }
-    println!("\nReceived {} prices, receiver dropped.", count);
+    println!("\nReceived {} prices.", count);
 }

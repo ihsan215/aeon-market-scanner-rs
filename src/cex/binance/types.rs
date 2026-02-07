@@ -18,7 +18,6 @@ pub struct BinanceBookTickerResponse {
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 pub struct BinanceBookTickerWs {
-    pub s: String, // symbol
     pub b: String, // best bid price
     pub B: String, // best bid qty
     pub a: String, // best ask price

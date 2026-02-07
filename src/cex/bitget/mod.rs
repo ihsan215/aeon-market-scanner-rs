@@ -3,12 +3,16 @@ mod types;
 use crate::cex::bitget::types::BitgetOrderBookResponse;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, parse_f64,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, parse_f64,
+    standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
 
 const BITGET_API_BASE: &str = "https://api.bitget.com/api/v2";
+const BITGET_WS_URL: &str = "wss://ws.bitget.com/v2/ws/public";
 
 create_exchange!(Bitget);
 
@@ -44,7 +48,7 @@ impl ExchangeTrait for Bitget {
 #[async_trait]
 impl CEXTrait for Bitget {
     fn supports_websocket(&self) -> bool {
-        false
+        true
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
@@ -129,5 +133,115 @@ impl CEXTrait for Bitget {
             timestamp: get_timestamp_millis(),
             exchange: Exchange::Cex(CexExchange::Bitget),
         })
+    }
+
+    /// Connection stays open; incoming ticker updates are sent over the returned Receiver.
+    async fn stream_price_websocket(
+        &self,
+        symbol: &str,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
+        if symbol.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "Symbol cannot be empty".to_string(),
+            ));
+        }
+
+        let bitget_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Bitget)?;
+
+        let (mut ws_stream, _) = tokio_tungstenite::connect_async(BITGET_WS_URL)
+            .await
+            .map_err(|e| {
+                MarketScannerError::ApiError(format!("Bitget WebSocket connect: {}", e))
+            })?;
+
+        let subscribe_msg = serde_json::json!({
+            "op": "subscribe",
+            "args": [{
+                "instType": "SPOT",
+                "channel": "ticker",
+                "instId": bitget_symbol
+            }]
+        });
+        ws_stream
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                subscribe_msg.to_string(),
+            ))
+            .await
+            .map_err(|e| MarketScannerError::ApiError(format!("Bitget WebSocket send: {}", e)))?;
+
+        let (_write, mut read) = ws_stream.split();
+        let (tx, rx) = mpsc::channel(64);
+        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bitget);
+
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = read.next().await {
+                let text = match msg.into_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let value: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if value.get("event").is_some()
+                    || value.get("op").and_then(|o| o.as_str()) == Some("subscribe")
+                {
+                    continue;
+                }
+                let data_arr = match value.get("data").and_then(|d| d.as_array()) {
+                    Some(a) if !a.is_empty() => a,
+                    _ => continue,
+                };
+                let item = &data_arr[0];
+                let (b, bq, a, aq) = if item.is_object() {
+                    let bid_pr = item
+                        .get("bidPr")
+                        .or(item.get("bidPx"))
+                        .and_then(|v| v.as_str());
+                    let ask_pr = item
+                        .get("askPr")
+                        .or(item.get("askPx"))
+                        .and_then(|v| v.as_str());
+                    let bid_sz = item.get("bidSz").and_then(|v| v.as_str());
+                    let ask_sz = item.get("askSz").and_then(|v| v.as_str());
+                    let bid_f = bid_pr.and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let ask_f = ask_pr.and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let bid_q = bid_sz.and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let ask_q = ask_sz.and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    (bid_f, bid_q, ask_f, ask_q)
+                } else if let Some(arr) = item.as_array() {
+                    if arr.len() >= 4 {
+                        let parse = |i: usize| {
+                            arr.get(i)
+                                .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+                                .unwrap_or(0.0)
+                        };
+                        (parse(2), 0.0, parse(3), 0.0)
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                };
+                if b <= 0.0 || a <= 0.0 {
+                    continue;
+                }
+                let price = CexPrice {
+                    symbol: symbol_std.clone(),
+                    mid_price: find_mid_price(b, a),
+                    bid_price: b,
+                    ask_price: a,
+                    bid_qty: bq,
+                    ask_qty: aq,
+                    timestamp: get_timestamp_millis(),
+                    exchange: Exchange::Cex(CexExchange::Bitget),
+                };
+                if tx.send(price).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(rx)
     }
 }
