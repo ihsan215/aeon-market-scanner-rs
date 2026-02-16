@@ -217,23 +217,24 @@ impl CEXTrait for Coinbase {
             let mut attempts: u32 = 0;
 
             loop {
-                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(COINBASE_WS_FEED).await {
-                    Ok(v) => v,
-                    Err(_) => {
-                        if !reconnect || tx.is_closed() {
-                            break;
-                        }
-                        attempts = attempts.saturating_add(1);
-                        if let Some(max) = max_attempts {
-                            if attempts >= max {
+                let (mut ws_stream, _) =
+                    match tokio_tungstenite::connect_async(COINBASE_WS_FEED).await {
+                        Ok(v) => v,
+                        Err(_) => {
+                            if !reconnect || tx.is_closed() {
                                 break;
                             }
+                            attempts = attempts.saturating_add(1);
+                            if let Some(max) = max_attempts {
+                                if attempts >= max {
+                                    break;
+                                }
+                            }
+                            tokio::time::sleep(backoff).await;
+                            backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                            continue;
                         }
-                        tokio::time::sleep(backoff).await;
-                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
-                        continue;
-                    }
-                };
+                    };
 
                 backoff = std::time::Duration::from_secs(1);
                 attempts = 0;

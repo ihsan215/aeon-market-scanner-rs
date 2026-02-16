@@ -226,16 +226,32 @@ pub fn format_symbol_for_exchange(
             // Crypto.com Exchange uses underscore separator: BTC_USDT
             if normalized.len() >= 7 && normalized.ends_with("USDT") {
                 let split_point = normalized.len() - 4;
-                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
             } else if normalized.len() >= 6 && normalized.ends_with("USD") {
                 let split_point = normalized.len() - 3;
-                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
             } else if normalized.len() >= 6 && normalized.ends_with("BTC") {
                 let split_point = normalized.len() - 3;
-                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
             } else if normalized.len() >= 6 {
                 let split_point = normalized.len() - 3;
-                format!("{}_{}", &normalized[..split_point], &normalized[split_point..])
+                format!(
+                    "{}_{}",
+                    &normalized[..split_point],
+                    &normalized[split_point..]
+                )
             } else {
                 return Err(MarketScannerError::InvalidSymbol(format!(
                     "Symbol too short for Crypto.com format: {}",
@@ -281,9 +297,7 @@ pub fn format_symbol_for_exchange_ws(
 pub fn standard_symbol_for_cex_ws_response(symbol: &str, exchange: &CexExchange) -> String {
     let normalized = normalize_symbol(symbol);
     match exchange {
-        CexExchange::Bitfinex if normalized.ends_with("USDT") => {
-            normalized.replace("USDT", "UST")
-        }
+        CexExchange::Bitfinex if normalized.ends_with("USDT") => normalized.replace("USDT", "UST"),
         // Upbit uses quote-base: USDT-BTC -> BTCUSDT, KRW-BTC -> BTCKRW
         CexExchange::Upbit if symbol.contains('-') => {
             let parts: Vec<&str> = symbol.split('-').collect();

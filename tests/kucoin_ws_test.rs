@@ -44,4 +44,3 @@ async fn kucoin_ws_stream_multi_symbol() {
 
     println!("\nReceived {} prices.", count);
 }
-

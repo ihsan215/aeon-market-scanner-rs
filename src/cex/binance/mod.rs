@@ -108,11 +108,18 @@ impl CEXTrait for Binance {
         let url = if stream_names.len() == 1 {
             format!("{}/ws/{}", BINANCE_WS_BASE, stream_names[0])
         } else {
-            format!("{}/stream?streams={}", BINANCE_WS_BASE, stream_names.join("/"))
+            format!(
+                "{}/stream?streams={}",
+                BINANCE_WS_BASE,
+                stream_names.join("/")
+            )
         };
 
         let single_symbol = if symbols.len() == 1 {
-            Some(standard_symbol_for_cex_ws_response(symbols[0], &CexExchange::Binance))
+            Some(standard_symbol_for_cex_ws_response(
+                symbols[0],
+                &CexExchange::Binance,
+            ))
         } else {
             None
         };
@@ -168,12 +175,18 @@ impl CEXTrait for Binance {
                             None => continue,
                         };
                         let sym = stream.split('@').next().unwrap_or("btcusdt");
-                        (data, standard_symbol_for_cex_ws_response(sym, &CexExchange::Binance))
+                        (
+                            data,
+                            standard_symbol_for_cex_ws_response(sym, &CexExchange::Binance),
+                        )
                     } else {
                         (
                             value,
                             single_symbol.clone().unwrap_or_else(|| {
-                                standard_symbol_for_cex_ws_response("btcusdt", &CexExchange::Binance)
+                                standard_symbol_for_cex_ws_response(
+                                    "btcusdt",
+                                    &CexExchange::Binance,
+                                )
                             }),
                         )
                     };

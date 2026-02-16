@@ -258,7 +258,9 @@ impl CEXTrait for Bitget {
                             if arr.len() >= 4 {
                                 let parse = |i: usize| {
                                     arr.get(i)
-                                        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+                                        .and_then(|v| {
+                                            v.as_str().and_then(|s| s.parse::<f64>().ok())
+                                        })
                                         .unwrap_or(0.0)
                                 };
                                 (parse(2), 0.0, parse(3), 0.0)

@@ -2,6 +2,27 @@
 name = "aeon-market-scanner-rs"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+
+description = "CEX/DEX market scanner: fetch prices, stream WebSocket updates, and find arbitrage opportunities."
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/ihsan215/aeon-market-scanner-rs"
+homepage = "https://github.com/ihsan215/aeon-market-scanner-rs"
+documentation = "https://docs.rs/aeon-market-scanner-rs"
+
+keywords = ["crypto", "arbitrage", "cex", "dex", "websocket"]
+categories = ["api-bindings", "asynchronous", "finance"]
+
+# Keep the published crate lean and explicit.
+include = [
+    "src/**/*",
+    "tests/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
 
 [dependencies]
 reqwest = { version = "0.12.28", features = ["json"] }

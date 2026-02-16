@@ -3,8 +3,8 @@ mod types;
 use crate::cex::bitfinex::types::BitfinexOrderBookResponse;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis, normalize_symbol,
-    standard_symbol_for_cex_ws_response,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis,
+    normalize_symbol, standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
@@ -204,24 +204,24 @@ impl CEXTrait for Bitfinex {
             let mut attempts: u32 = 0;
 
             loop {
-                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BITFINEX_WS_URL).await
-                {
-                    Ok(v) => v,
-                    Err(_) => {
-                        if !reconnect || tx.is_closed() {
-                            break;
-                        }
-                        attempts = attempts.saturating_add(1);
-                        if let Some(max) = max_attempts {
-                            if attempts >= max {
+                let (mut ws_stream, _) =
+                    match tokio_tungstenite::connect_async(BITFINEX_WS_URL).await {
+                        Ok(v) => v,
+                        Err(_) => {
+                            if !reconnect || tx.is_closed() {
                                 break;
                             }
+                            attempts = attempts.saturating_add(1);
+                            if let Some(max) = max_attempts {
+                                if attempts >= max {
+                                    break;
+                                }
+                            }
+                            tokio::time::sleep(backoff).await;
+                            backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                            continue;
                         }
-                        tokio::time::sleep(backoff).await;
-                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
-                        continue;
-                    }
-                };
+                    };
 
                 backoff = std::time::Duration::from_secs(1);
                 attempts = 0;

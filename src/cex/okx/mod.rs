@@ -270,10 +270,7 @@ fn json_to_f64(v: &serde_json::Value) -> Option<f64> {
 }
 
 fn parse_okx_books5(item: &serde_json::Value, arg_inst: Option<&str>) -> Option<CexPrice> {
-    let inst_id = item
-        .get("instId")
-        .and_then(|s| s.as_str())
-        .or(arg_inst)?;
+    let inst_id = item.get("instId").and_then(|s| s.as_str()).or(arg_inst)?;
 
     let bids = item.get("bids")?.as_array()?;
     let asks = item.get("asks")?.as_array()?;

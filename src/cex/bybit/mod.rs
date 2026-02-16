@@ -139,7 +139,8 @@ impl CEXTrait for Bybit {
             let mut attempts: u32 = 0;
 
             loop {
-                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BYBIT_WS_SPOT).await {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BYBIT_WS_SPOT).await
+                {
                     Ok(v) => v,
                     Err(_) => {
                         if !reconnect || tx.is_closed() {
