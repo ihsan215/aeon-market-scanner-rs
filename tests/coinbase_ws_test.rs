@@ -3,19 +3,18 @@
 
 use aeon_market_scanner_rs::{CEXTrait, Coinbase};
 
-const SYMBOL: &str = "BTCUSDT";
-
 #[tokio::test]
-async fn coinbase_ws_stream_ten_then_stop() {
-    println!("\n=== Coinbase WebSocket stream (ticker) – 2 prices then stop ===\n");
+async fn coinbase_ws_stream_multi_symbol() {
+    println!("\n=== Coinbase WebSocket stream (ticker) – multi-symbol (BTC-USD, ETH-USD) ===\n");
 
     let exchange = Coinbase::new();
     let mut rx = exchange
-        .stream_price_websocket(SYMBOL)
+        .stream_price_websocket(&["BTCUSD", "ETHUSD"], true, None)
         .await
         .expect("Coinbase WebSocket stream");
 
     let mut count = 0u32;
+    let mut seen = std::collections::HashSet::new();
     while let Some(price) = rx.recv().await {
         println!(
             "{}  bid: {:>12}  ask: {:>12}  mid: {:>12}  (bid_qty: {}, ask_qty: {})",
@@ -26,8 +25,9 @@ async fn coinbase_ws_stream_ten_then_stop() {
             price.bid_qty,
             price.ask_qty
         );
+        seen.insert(price.symbol.clone());
         count += 1;
-        if count >= 2 {
+        if seen.len() >= 2 && count >= 10 {
             break;
         }
     }

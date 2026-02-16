@@ -97,118 +97,167 @@ impl CEXTrait for Gateio {
 
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let gateio_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Gateio)?;
+        let gateio_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Gateio))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(GATEIO_WS_URL)
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Gate.io WebSocket connect: {}", e))
-            })?;
-
-        // depth.subscribe: params [market, limit, interval]
-        // limit: 1,5,10,20,30 | interval: "0","0.0001","0.001","0.01","0.1" etc.
+        // depth.subscribe: multi-market [[market, limit, interval], ...]
+        let params: Vec<serde_json::Value> = gateio_symbols
+            .iter()
+            .map(|s| serde_json::json!([s, 10, "0.01"]))
+            .collect();
         let subscribe_msg = serde_json::json!({
             "id": 1,
             "method": "depth.subscribe",
-            "params": [gateio_symbol, 10, "0.01"]
+            "params": params
         });
 
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| MarketScannerError::ApiError(format!("Gate.io WebSocket send: {}", e)))?;
-
-        let (_write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Gateio);
 
         tokio::spawn(async move {
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                let value: serde_json::Value = match serde_json::from_str(&text) {
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(GATEIO_WS_URL).await
+                {
                     Ok(v) => v,
-                    Err(_) => continue,
-                };
-                // Skip subscribe ack: {"error":null,"result":{"status":"success"},"id":1}
-                if value.get("id").is_some() && value.get("id").unwrap().is_number() {
-                    let result = value.get("result");
-                    if result
-                        .and_then(|r| r.get("status"))
-                        .and_then(|s| s.as_str())
-                        == Some("success")
-                    {
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
                         continue;
                     }
-                    if value.get("error").is_some() {
-                        continue;
+                };
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                if ws_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        subscribe_msg.to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
                     }
-                }
-                // depth.update: params = [clean, depth, market]; depth has bids/asks
-                if value.get("method").and_then(|m| m.as_str()) != Some("depth.update") {
-                    continue;
-                }
-                let params = match value.get("params").and_then(|p| p.as_array()) {
-                    Some(p) if p.len() >= 3 => p,
-                    _ => continue,
-                };
-                let depth = match params[1].as_object() {
-                    Some(d) => d,
-                    None => continue,
-                };
-                let bids = depth.get("bids").and_then(|v| v.as_array());
-                let asks = depth.get("asks").and_then(|v| v.as_array());
-                let (bid_entry, ask_entry) = match (bids, asks) {
-                    (Some(b), Some(a)) => {
-                        let be = b.first().and_then(|x| x.as_array());
-                        let ae = a.first().and_then(|x| x.as_array());
-                        match (be, ae) {
-                            (Some(be), Some(ae)) if be.len() >= 2 && ae.len() >= 2 => (be, ae),
-                            _ => continue,
+                    attempts = attempts.saturating_add(1);
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            break;
                         }
                     }
-                    _ => continue,
-                };
-                let bid_str = bid_entry[0].as_str().unwrap_or("");
-                let bid_qty_str = bid_entry[1].as_str().unwrap_or("0");
-                let ask_str = ask_entry[0].as_str().unwrap_or("");
-                let ask_qty_str = ask_entry[1].as_str().unwrap_or("0");
-                let bid = match parse_f64(bid_str, "bid") {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let ask = match parse_f64(ask_str, "ask") {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let bid_qty = parse_f64(bid_qty_str, "bid_qty").unwrap_or(0.0);
-                let ask_qty = parse_f64(ask_qty_str, "ask_qty").unwrap_or(0.0);
-                if bid <= 0.0 || ask <= 0.0 {
                     continue;
                 }
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Gateio),
-                };
-                if tx.send(price).await.is_err() {
+
+                let (_write, mut read) = ws_stream.split();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    // Skip subscribe ack: {"error":null,"result":{"status":"success"},"id":1}
+                    if value.get("id").is_some() && value.get("id").unwrap().is_number() {
+                        let result = value.get("result");
+                        if result
+                            .and_then(|r| r.get("status"))
+                            .and_then(|s| s.as_str())
+                            == Some("success")
+                        {
+                            continue;
+                        }
+                        if value.get("error").is_some() {
+                            continue;
+                        }
+                    }
+                    // depth.update: params = [clean, depth, market]; depth has bids/asks
+                    if value.get("method").and_then(|m| m.as_str()) != Some("depth.update") {
+                        continue;
+                    }
+                    let params = match value.get("params").and_then(|p| p.as_array()) {
+                        Some(p) if p.len() >= 3 => p,
+                        _ => continue,
+                    };
+                    let market = params[2].as_str().unwrap_or("");
+                    let symbol_std =
+                        standard_symbol_for_cex_ws_response(market, &CexExchange::Gateio);
+                    let depth = match params[1].as_object() {
+                        Some(d) => d,
+                        None => continue,
+                    };
+                    let bids = depth.get("bids").and_then(|v| v.as_array());
+                    let asks = depth.get("asks").and_then(|v| v.as_array());
+                    let (bid_entry, ask_entry) = match (bids, asks) {
+                        (Some(b), Some(a)) => {
+                            let be = b.first().and_then(|x| x.as_array());
+                            let ae = a.first().and_then(|x| x.as_array());
+                            match (be, ae) {
+                                (Some(be), Some(ae)) if be.len() >= 2 && ae.len() >= 2 => (be, ae),
+                                _ => continue,
+                            }
+                        }
+                        _ => continue,
+                    };
+                    let bid_str = bid_entry[0].as_str().unwrap_or("");
+                    let bid_qty_str = bid_entry[1].as_str().unwrap_or("0");
+                    let ask_str = ask_entry[0].as_str().unwrap_or("");
+                    let ask_qty_str = ask_entry[1].as_str().unwrap_or("0");
+                    let bid = match parse_f64(bid_str, "bid") {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let ask = match parse_f64(ask_str, "ask") {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let bid_qty = parse_f64(bid_qty_str, "bid_qty").unwrap_or(0.0);
+                    let ask_qty = parse_f64(ask_qty_str, "ask_qty").unwrap_or(0.0);
+                    if bid <= 0.0 || ask <= 0.0 {
+                        continue;
+                    }
+                    let price = CexPrice {
+                        symbol: symbol_std,
+                        mid_price: find_mid_price(bid, ask),
+                        bid_price: bid,
+                        ask_price: ask,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Gateio),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
+                }
+
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

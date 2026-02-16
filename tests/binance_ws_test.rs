@@ -1,20 +1,19 @@
-//! Binance WebSocket test: stream stays open; receive one price, print, then drop receiver.
+//! Binance WebSocket test: stream stays open; receive prices, print, then drop receiver.
 //! Run: cargo test binance_ws -- --nocapture
 
 use aeon_market_scanner_rs::{Binance, CEXTrait};
 
-const SYMBOL: &str = "BTCUSDT";
-
 #[tokio::test]
-async fn binance_ws_stream_one_then_stop() {
-    println!("\n=== Binance WebSocket stream – continuous feed (stop after 10 prices) ===\n");
+async fn binance_ws_stream_multi_symbol() {
+    println!("\n=== Binance WebSocket stream – multi-symbol (BTCUSDT, ETHUSDT) ===\n");
 
     let exchange = Binance::new();
     let mut rx = exchange
-        .stream_price_websocket(SYMBOL)
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, None)
         .await
         .expect("WebSocket stream");
 
+    let mut seen = std::collections::HashSet::new();
     let mut count = 0u32;
     while let Some(price) = rx.recv().await {
         println!(
@@ -26,10 +25,16 @@ async fn binance_ws_stream_one_then_stop() {
             price.bid_qty,
             price.ask_qty
         );
+        seen.insert(price.symbol.clone());
         count += 1;
-        if count >= 10 {
+        if seen.len() >= 2 && count >= 10 {
             break;
         }
     }
-    println!("\nReceived {} prices, receiver dropped.", count);
+    assert!(
+        seen.len() >= 2,
+        "Expected both BTCUSDT and ETHUSDT; got {:?}",
+        seen
+    );
+    println!("\nReceived {} prices from {:?}.", count, seen);
 }

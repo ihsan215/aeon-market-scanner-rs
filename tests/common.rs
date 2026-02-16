@@ -124,7 +124,7 @@ pub async fn test_get_price_empty_symbol_common<T: CEXTrait>(exchange: &T, excha
         }
         Err(e) => {
             println!("Got error: {:?}", e);
-            // Empty symbol için ApiError veya başka bir hata tipi olabilir
+            // For empty symbols, it may be ApiError or another error type
         }
         Ok(price) => {
             println!("Unexpected success: {:?}", price);

@@ -113,86 +113,134 @@ impl CEXTrait for Bybit {
     /// Stream price via WebSocket (orderbook.1 spot). Connection stays open; prices sent over the channel.
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let bybit_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Bybit)?;
-        let topic = format!("orderbook.1.{}", bybit_symbol);
+        let topics: Vec<String> = symbols
+            .iter()
+            .map(|s| {
+                let sym = format_symbol_for_exchange_ws(s, &CexExchange::Bybit)?;
+                Ok(format!("orderbook.1.{}", sym))
+            })
+            .collect::<Result<Vec<_>, MarketScannerError>>()?;
 
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(BYBIT_WS_SPOT)
-            .await
-            .map_err(|e| MarketScannerError::ApiError(format!("Bybit WebSocket connect: {}", e)))?;
-
-        let subscribe_msg = serde_json::json!({
-            "op": "subscribe",
-            "args": [topic]
-        });
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| MarketScannerError::ApiError(format!("Bybit WebSocket send: {}", e)))?;
-
-        let (_write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bybit);
 
         tokio::spawn(async move {
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BYBIT_WS_SPOT).await {
+                    Ok(v) => v,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
                 };
-                let parsed: BybitOrderbookWsMessage = match serde_json::from_str(&text) {
-                    Ok(p) => p,
-                    Err(_) => continue,
-                };
-                if parsed.msg_type != "snapshot" {
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                let subscribe_msg = serde_json::json!({
+                    "op": "subscribe",
+                    "args": topics
+                });
+                if ws_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        subscribe_msg.to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
+                    }
+                    attempts = attempts.saturating_add(1);
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            break;
+                        }
+                    }
                     continue;
                 }
-                let data = &parsed.data;
-                let (bid_price, bid_qty) = match data.bids.first() {
-                    Some([p, q]) => {
-                        let bp = match parse_f64(p, "bid price") {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        };
-                        let bq = parse_f64(q, "bid size").unwrap_or(0.0);
-                        (bp, bq)
+
+                let (_write, mut read) = ws_stream.split();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let parsed: BybitOrderbookWsMessage = match serde_json::from_str(&text) {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    };
+                    if parsed.msg_type != "snapshot" {
+                        continue;
                     }
-                    _ => continue,
-                };
-                let (ask_price, ask_qty) = match data.asks.first() {
-                    Some([p, q]) => {
-                        let ap = match parse_f64(p, "ask price") {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        };
-                        let aq = parse_f64(q, "ask size").unwrap_or(0.0);
-                        (ap, aq)
+                    let data = &parsed.data;
+                    let symbol_std =
+                        standard_symbol_for_cex_ws_response(&data.symbol, &CexExchange::Bybit);
+                    let (bid_price, bid_qty) = match data.bids.first() {
+                        Some([p, q]) => {
+                            let bp = match parse_f64(p, "bid price") {
+                                Ok(v) => v,
+                                Err(_) => continue,
+                            };
+                            let bq = parse_f64(q, "bid size").unwrap_or(0.0);
+                            (bp, bq)
+                        }
+                        _ => continue,
+                    };
+                    let (ask_price, ask_qty) = match data.asks.first() {
+                        Some([p, q]) => {
+                            let ap = match parse_f64(p, "ask price") {
+                                Ok(v) => v,
+                                Err(_) => continue,
+                            };
+                            let aq = parse_f64(q, "ask size").unwrap_or(0.0);
+                            (ap, aq)
+                        }
+                        _ => continue,
+                    };
+                    if bid_price <= 0.0 || ask_price <= 0.0 {
+                        continue;
                     }
-                    _ => continue,
-                };
-                if bid_price <= 0.0 || ask_price <= 0.0 {
-                    continue;
+                    let price = CexPrice {
+                        symbol: symbol_std.clone(),
+                        mid_price: find_mid_price(bid_price, ask_price),
+                        bid_price,
+                        ask_price,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Bybit),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
                 }
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid_price, ask_price),
-                    bid_price,
-                    ask_price,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Bybit),
-                };
-                if tx.send(price).await.is_err() {
+
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

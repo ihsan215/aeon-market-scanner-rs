@@ -14,3 +14,4 @@ chrono = "0.4"
 rust_decimal = { version = "1.36", features = ["serde-with-str"] }
 futures = "0.3"
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+prost = "0.13"

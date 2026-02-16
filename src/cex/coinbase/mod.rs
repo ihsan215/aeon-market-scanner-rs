@@ -194,73 +194,121 @@ impl CEXTrait for Coinbase {
 
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let coinbase_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Coinbase)?;
+        let coinbase_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Coinbase))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(COINBASE_WS_FEED).await.map_err(
-            |e| MarketScannerError::ApiError(format!("Coinbase WebSocket connect: {}", e)),
-        )?;
-
-        let subscribe_msg = serde_json::json!({
-            "type": "subscribe",
-            "product_ids": [coinbase_symbol],
-            "channels": ["ticker"]
-        });
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| MarketScannerError::ApiError(format!("Coinbase WebSocket send: {}", e)))?;
-
-        let (_write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Coinbase);
 
         tokio::spawn(async move {
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(COINBASE_WS_FEED).await {
+                    Ok(v) => v,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
                 };
-                let ticker: CoinbaseTickerWs = match serde_json::from_str(&text) {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                if ticker.msg_type != "ticker" {
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                let subscribe_msg = serde_json::json!({
+                    "type": "subscribe",
+                    "product_ids": coinbase_symbols,
+                    "channels": ["ticker"]
+                });
+                if ws_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        subscribe_msg.to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
+                    }
+                    attempts = attempts.saturating_add(1);
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            break;
+                        }
+                    }
                     continue;
                 }
-                let bid = match parse_f64(&ticker.best_bid, "bid") {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let ask = match parse_f64(&ticker.best_ask, "ask") {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let bid_qty = parse_f64(&ticker.best_bid_size, "bid_size").unwrap_or(0.0);
-                let ask_qty = parse_f64(&ticker.best_ask_size, "ask_size").unwrap_or(0.0);
-                if bid <= 0.0 || ask <= 0.0 {
-                    continue;
+
+                let (_write, mut read) = ws_stream.split();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let ticker: CoinbaseTickerWs = match serde_json::from_str(&text) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    if ticker.msg_type != "ticker" {
+                        continue;
+                    }
+                    let bid = match parse_f64(&ticker.best_bid, "bid") {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let ask = match parse_f64(&ticker.best_ask, "ask") {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let bid_qty = parse_f64(&ticker.best_bid_size, "bid_size").unwrap_or(0.0);
+                    let ask_qty = parse_f64(&ticker.best_ask_size, "ask_size").unwrap_or(0.0);
+                    if bid <= 0.0 || ask <= 0.0 {
+                        continue;
+                    }
+                    let symbol_std = standard_symbol_for_cex_ws_response(
+                        &ticker.product_id,
+                        &CexExchange::Coinbase,
+                    );
+                    let price = CexPrice {
+                        symbol: symbol_std,
+                        mid_price: find_mid_price(bid, ask),
+                        bid_price: bid,
+                        ask_price: ask,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Coinbase),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
                 }
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Coinbase),
-                };
-                if tx.send(price).await.is_err() {
+
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

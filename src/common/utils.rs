@@ -284,6 +284,15 @@ pub fn standard_symbol_for_cex_ws_response(symbol: &str, exchange: &CexExchange)
         CexExchange::Bitfinex if normalized.ends_with("USDT") => {
             normalized.replace("USDT", "UST")
         }
+        // Upbit uses quote-base: USDT-BTC -> BTCUSDT, KRW-BTC -> BTCKRW
+        CexExchange::Upbit if symbol.contains('-') => {
+            let parts: Vec<&str> = symbol.split('-').collect();
+            if parts.len() == 2 {
+                format!("{}{}", parts[1].trim(), parts[0].trim()).to_uppercase()
+            } else {
+                normalized
+            }
+        }
         _ => normalized,
     }
 }

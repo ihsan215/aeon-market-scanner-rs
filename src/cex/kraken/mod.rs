@@ -9,7 +9,7 @@ use crate::common::{
 use crate::create_exchange;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc;
 
 const KRAKEN_API_BASE: &str = "https://api.kraken.com/0/public";
@@ -177,45 +177,36 @@ impl CEXTrait for Kraken {
 
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let kraken_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Kraken)?;
-
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(KRAKEN_WS_URL)
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Kraken WebSocket connect: {}", e))
-            })?;
+        let kraken_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Kraken))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let subscribe_msg = serde_json::json!({
             "method": "subscribe",
             "params": {
                 "channel": "book",
-                "symbol": [kraken_symbol],
+                "symbol": kraken_symbols,
                 "depth": 10
             }
         });
-
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| MarketScannerError::ApiError(format!("Kraken WebSocket send: {}", e)))?;
-
-        let (mut write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Kraken);
 
         tokio::spawn(async move {
-            let mut bids: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
-            let mut asks: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
+            type BookMap = BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>;
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
 
             fn apply_kraken_levels(
                 map: &mut BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>,
@@ -260,78 +251,137 @@ impl CEXTrait for Kraken {
                 Some((bid, ask, bq, aq))
             }
 
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                let value: serde_json::Value = match serde_json::from_str(&text) {
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(KRAKEN_WS_URL).await
+                {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
                 };
 
-                // Server ping: respond with pong to keep connection alive
-                if value.get("method").and_then(|m| m.as_str()) == Some("ping") {
-                    let req_id = value.get("req_id").cloned();
-                    let pong = match req_id {
-                        Some(id) => serde_json::json!({ "method": "pong", "req_id": id }),
-                        None => serde_json::json!({ "method": "pong" }),
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                if ws_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        subscribe_msg.to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
+                    }
+                    attempts = attempts.saturating_add(1);
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+
+                let (mut write, mut read) = ws_stream.split();
+                let mut books: HashMap<String, (BookMap, BookMap)> = HashMap::new();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
                     };
-                    let _ = write
-                        .send(tokio_tungstenite::tungstenite::Message::Text(
-                            pong.to_string(),
-                        ))
-                        .await;
-                    continue;
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+
+                    // Server ping: respond with pong to keep connection alive
+                    if value.get("method").and_then(|m| m.as_str()) == Some("ping") {
+                        let req_id = value.get("req_id").cloned();
+                        let pong = match req_id {
+                            Some(id) => serde_json::json!({ "method": "pong", "req_id": id }),
+                            None => serde_json::json!({ "method": "pong" }),
+                        };
+                        let _ = write
+                            .send(tokio_tungstenite::tungstenite::Message::Text(
+                                pong.to_string(),
+                            ))
+                            .await;
+                        continue;
+                    }
+
+                    // Heartbeat: {"channel":"heartbeat"} - no response needed, skip
+                    if value.get("channel").and_then(|c| c.as_str()) == Some("heartbeat") {
+                        continue;
+                    }
+
+                    // Subscribe ack: {"method":"subscribe","result":{...},"success":true}
+                    if value.get("method").and_then(|m| m.as_str()) == Some("subscribe") {
+                        continue;
+                    }
+
+                    // Book snapshot/update: channel=book, type=snapshot|update, data=[{symbol, bids, asks}, ...]
+                    if value.get("channel").and_then(|c| c.as_str()) != Some("book") {
+                        continue;
+                    }
+
+                    let data_arr = match value.get("data").and_then(|d| d.as_array()) {
+                        Some(d) if !d.is_empty() => d,
+                        _ => continue,
+                    };
+
+                    let msg_type = value.get("type").and_then(|t| t.as_str());
+
+                    for data in data_arr {
+                        let kraken_sym = match data.get("symbol").and_then(|s| s.as_str()) {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                        let symbol_std =
+                            standard_symbol_for_cex_ws_response(kraken_sym, &CexExchange::Kraken);
+                        let (bids, asks) = books
+                            .entry(symbol_std.clone())
+                            .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
+                        if msg_type == Some("snapshot") {
+                            bids.clear();
+                            asks.clear();
+                        }
+                        apply_kraken_levels(bids, data.get("bids"));
+                        apply_kraken_levels(asks, data.get("asks"));
+
+                        let (bid, ask, bid_qty, ask_qty) = match best_bid_ask(bids, asks) {
+                            Some(b) => b,
+                            None => continue,
+                        };
+
+                        let price = CexPrice {
+                            symbol: symbol_std.clone(),
+                            mid_price: find_mid_price(bid, ask),
+                            bid_price: bid,
+                            ask_price: ask,
+                            bid_qty,
+                            ask_qty,
+                            timestamp: get_timestamp_millis(),
+                            exchange: Exchange::Cex(CexExchange::Kraken),
+                        };
+                        if tx.send(price).await.is_err() {
+                            return;
+                        }
+                    }
                 }
 
-                // Heartbeat: {"channel":"heartbeat"} - no response needed, skip
-                if value.get("channel").and_then(|c| c.as_str()) == Some("heartbeat") {
-                    continue;
-                }
-
-                // Subscribe ack: {"method":"subscribe","result":{...},"success":true}
-                if value.get("method").and_then(|m| m.as_str()) == Some("subscribe") {
-                    continue;
-                }
-
-                // Book snapshot/update: channel=book, type=snapshot|update, data=[{bids, asks}]
-                if value.get("channel").and_then(|c| c.as_str()) != Some("book") {
-                    continue;
-                }
-
-                let data = match value.get("data").and_then(|d| d.as_array()) {
-                    Some(d) if !d.is_empty() => &d[0],
-                    _ => continue,
-                };
-
-                let msg_type = value.get("type").and_then(|t| t.as_str());
-                let data_bids = data.get("bids");
-                let data_asks = data.get("asks");
-
-                if msg_type == Some("snapshot") {
-                    bids.clear();
-                    asks.clear();
-                }
-                apply_kraken_levels(&mut bids, data_bids);
-                apply_kraken_levels(&mut asks, data_asks);
-
-                let (bid, ask, bid_qty, ask_qty) = match best_bid_ask(&bids, &asks) {
-                    Some(b) => b,
-                    None => continue,
-                };
-
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Kraken),
-                };
-                if tx.send(price).await.is_err() {
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

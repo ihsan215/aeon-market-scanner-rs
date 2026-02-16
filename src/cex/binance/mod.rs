@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use types::{BinanceBookTickerResponse, BinanceBookTickerWs};
 
 const BINANCE_API_BASE: &str = "https://api.binance.com/api/v3";
-const BINANCE_WS_BASE: &str = "wss://stream.binance.com:9443/ws";
+const BINANCE_WS_BASE: &str = "wss://stream.binance.com:9443";
 
 create_exchange!(Binance);
 
@@ -85,56 +85,129 @@ impl CEXTrait for Binance {
     /// When the channel closes (Receiver returns None), the connection has closed.
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let binance_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Binance)?;
-        let stream_name = format!("{}@bookTicker", binance_symbol);
-        let url = format!("{}/{}", BINANCE_WS_BASE, stream_name);
+        let stream_names: Vec<String> = symbols
+            .iter()
+            .map(|s| {
+                let sym = format_symbol_for_exchange_ws(s, &CexExchange::Binance).ok()?;
+                Some(format!("{}@bookTicker", sym.to_lowercase()))
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| MarketScannerError::InvalidSymbol("Invalid symbol".to_string()))?;
 
-        let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.map_err(|e| {
-            MarketScannerError::ApiError(format!("Binance WebSocket connect: {}", e))
-        })?;
+        let is_combined = stream_names.len() > 1;
+        let url = if stream_names.len() == 1 {
+            format!("{}/ws/{}", BINANCE_WS_BASE, stream_names[0])
+        } else {
+            format!("{}/stream?streams={}", BINANCE_WS_BASE, stream_names.join("/"))
+        };
 
-        let (_write, mut read) = ws_stream.split();
+        let single_symbol = if symbols.len() == 1 {
+            Some(standard_symbol_for_cex_ws_response(symbols[0], &CexExchange::Binance))
+        } else {
+            None
+        };
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Binance);
 
         tokio::spawn(async move {
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (ws_stream, _) = match tokio_tungstenite::connect_async(&url).await {
+                    Ok(v) => v,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
                 };
-                let ticker: BinanceBookTickerWs = match serde_json::from_str(&text) {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                let (bid, ask, bid_qty, ask_qty) = match (
-                    parse_f64(&ticker.b, "bid"),
-                    parse_f64(&ticker.a, "ask"),
-                    parse_f64(&ticker.B, "bidQty"),
-                    parse_f64(&ticker.A, "askQty"),
-                ) {
-                    (Ok(b), Ok(a), Ok(bq), Ok(aq)) => (b, a, bq, aq),
-                    _ => continue,
-                };
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Binance),
-                };
-                if tx.send(price).await.is_err() {
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+                let (_write, mut read) = ws_stream.split();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+
+                    // Combined stream: {"stream":"btcusdt@bookTicker","data":{...}}
+                    // Single stream: raw payload {b, B, a, A}
+                    let (ticker_value, symbol_std) = if is_combined {
+                        let stream = match value.get("stream").and_then(|s| s.as_str()) {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                        let data = match value.get("data") {
+                            Some(d) => d.clone(),
+                            None => continue,
+                        };
+                        let sym = stream.split('@').next().unwrap_or("btcusdt");
+                        (data, standard_symbol_for_cex_ws_response(sym, &CexExchange::Binance))
+                    } else {
+                        (
+                            value,
+                            single_symbol.clone().unwrap_or_else(|| {
+                                standard_symbol_for_cex_ws_response("btcusdt", &CexExchange::Binance)
+                            }),
+                        )
+                    };
+
+                    let ticker: BinanceBookTickerWs = match serde_json::from_value(ticker_value) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+
+                    let (bid, ask, bid_qty, ask_qty) = match (
+                        parse_f64(&ticker.b, "bid"),
+                        parse_f64(&ticker.a, "ask"),
+                        parse_f64(&ticker.B, "bidQty"),
+                        parse_f64(&ticker.A, "askQty"),
+                    ) {
+                        (Ok(b), Ok(a), Ok(bq), Ok(aq)) => (b, a, bq, aq),
+                        _ => continue,
+                    };
+                    let price = CexPrice {
+                        symbol: symbol_std,
+                        mid_price: find_mid_price(bid, ask),
+                        bid_price: bid,
+                        ask_price: ask,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Binance),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
+                }
+
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

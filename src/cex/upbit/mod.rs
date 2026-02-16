@@ -3,12 +3,17 @@ mod types;
 use crate::cex::upbit::types::UpbitOrderBookResponse;
 use crate::common::{
     CEXTrait, CexExchange, CexPrice, Exchange, ExchangeTrait, MarketScannerError, find_mid_price,
-    format_symbol_for_exchange, get_timestamp_millis, normalize_symbol,
+    format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis,
+    normalize_symbol, standard_symbol_for_cex_ws_response,
 };
 use crate::create_exchange;
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 const UPBIT_API_BASE: &str = "https://api.upbit.com/v1";
+const UPBIT_WS_URL: &str = "wss://api.upbit.com/websocket/v1";
 
 create_exchange!(Upbit);
 
@@ -45,7 +50,7 @@ impl ExchangeTrait for Upbit {
 #[async_trait]
 impl CEXTrait for Upbit {
     fn supports_websocket(&self) -> bool {
-        false
+        true
     }
 
     async fn get_price(&self, symbol: &str) -> Result<CexPrice, MarketScannerError> {
@@ -136,4 +141,133 @@ impl CEXTrait for Upbit {
             exchange: Exchange::Cex(CexExchange::Upbit),
         })
     }
+
+    async fn stream_price_websocket(
+        &self,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
+        if symbols.is_empty() {
+            return Err(MarketScannerError::InvalidSymbol(
+                "At least one symbol required".to_string(),
+            ));
+        }
+
+        let upbit_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Upbit))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Subscribe: [{ticket},{type,codes},{format}]
+        let subscribe_msg = serde_json::json!([
+            {"ticket": "upbit-ws-1"},
+            {"type": "orderbook", "codes": upbit_symbols},
+            {"format": "DEFAULT"}
+        ]);
+
+        let (tx, rx) = mpsc::channel(64);
+
+        tokio::spawn(async move {
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(UPBIT_WS_URL).await
+                {
+                    Ok(v) => v,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
+                };
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                if ws_stream
+                    .send(WsMessage::Text(subscribe_msg.to_string()))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
+                    }
+                    attempts = attempts.saturating_add(1);
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+
+                let (_write, mut read) = ws_stream.split();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    if value.get("type").and_then(|t| t.as_str()) != Some("orderbook") {
+                        continue;
+                    }
+                    if let Some(price) = parse_upbit_orderbook(&value) {
+                        if tx.send(price).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+
+                if !reconnect || tx.is_closed() {
+                    break;
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+}
+
+fn parse_upbit_orderbook(value: &serde_json::Value) -> Option<CexPrice> {
+    let code = value.get("code")?.as_str()?;
+    let orderbook_units = value.get("orderbook_units")?.as_array()?;
+    let unit = orderbook_units.first()?.as_object()?;
+
+    let bid_price = unit.get("bid_price")?.as_f64()?;
+    let ask_price = unit.get("ask_price")?.as_f64()?;
+    let bid_size = unit.get("bid_size").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let ask_size = unit.get("ask_size").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+    if bid_price <= 0.0 || ask_price <= 0.0 {
+        return None;
+    }
+
+    let standard_symbol = standard_symbol_for_cex_ws_response(code, &CexExchange::Upbit);
+
+    Some(CexPrice {
+        symbol: standard_symbol,
+        mid_price: find_mid_price(bid_price, ask_price),
+        bid_price: bid_price,
+        ask_price: ask_price,
+        bid_qty: bid_size,
+        ask_qty: ask_size,
+        timestamp: get_timestamp_millis(),
+        exchange: Exchange::Cex(CexExchange::Upbit),
+    })
 }

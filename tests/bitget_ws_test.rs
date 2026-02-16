@@ -3,19 +3,18 @@
 
 use aeon_market_scanner_rs::{Bitget, CEXTrait};
 
-const SYMBOL: &str = "BTCUSDT";
-
 #[tokio::test]
-async fn bitget_ws_stream_one_then_stop() {
-    println!("\n=== Bitget WebSocket stream – continuous feed (stop after 10 prices) ===\n");
+async fn bitget_ws_stream_multi_symbol() {
+    println!("\n=== Bitget WebSocket stream – multi-symbol (BTCUSDT, ETHUSDT) ===\n");
 
     let exchange = Bitget::new();
     let mut rx = exchange
-        .stream_price_websocket(SYMBOL)
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, None)
         .await
         .expect("WebSocket stream");
 
     let mut count = 0u32;
+    let mut seen = std::collections::HashSet::new();
     while let Some(price) = rx.recv().await {
         println!(
             "{}  bid: {:>12}  ask: {:>12}  mid: {:>12}  (bid_qty: {}, ask_qty: {})",
@@ -26,8 +25,9 @@ async fn bitget_ws_stream_one_then_stop() {
             price.bid_qty,
             price.ask_qty
         );
+        seen.insert(price.symbol.clone());
         count += 1;
-        if count >= 10 {
+        if seen.len() >= 2 && count >= 10 {
             break;
         }
     }

@@ -1,7 +1,7 @@
 /// Bitfinex v2 API orderbook response format
 /// Returns array of arrays: [[price, count, amount], ...]
 /// where amount is negative for bids and positive for asks
-/// [price, count, amount] formatında
+/// In [price, count, amount] format
 pub type BitfinexOrderBookResponse = Vec<[f64; 3]>;
 
 /// Bitfinex platform status response

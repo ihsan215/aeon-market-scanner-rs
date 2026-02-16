@@ -9,7 +9,7 @@ use crate::common::{
 use crate::create_exchange;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc;
 
 const CRYPTOCOM_API_BASE: &str = "https://api.crypto.com/v2/public";
@@ -138,49 +138,40 @@ impl CEXTrait for Cryptocom {
 
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let cryptocom_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Cryptocom)?;
-        let channel = format!("book.{}.10", cryptocom_symbol);
-
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(CRYPTOCOM_WS_MARKET)
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Crypto.com WebSocket connect: {}", e))
-            })?;
+        let channels: Vec<String> = symbols
+            .iter()
+            .map(|s| {
+                let sym = format_symbol_for_exchange_ws(s, &CexExchange::Cryptocom)?;
+                Ok(format!("book.{}.10", sym))
+            })
+            .collect::<Result<Vec<_>, MarketScannerError>>()?;
 
         let subscribe_msg = serde_json::json!({
             "id": 1,
             "method": "subscribe",
             "params": {
-                "channels": [channel],
+                "channels": channels,
                 "book_subscription_type": "SNAPSHOT_AND_UPDATE",
                 "book_update_frequency": 100
             }
         });
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Crypto.com WebSocket send: {}", e))
-            })?;
-
-        let (_write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Cryptocom);
 
         tokio::spawn(async move {
-            // Orderbook state: price (as rust_decimal for Ord) -> qty. Bids desc, asks asc.
-            let mut bids: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
-            let mut asks: BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal> = BTreeMap::new();
+            type BookMap = BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>;
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
 
             fn apply_levels(
                 map: &mut BTreeMap<rust_decimal::Decimal, rust_decimal::Decimal>,
@@ -223,87 +214,161 @@ impl CEXTrait for Cryptocom {
                 Some((bid, ask, bq, aq))
             }
 
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                let value: serde_json::Value = match serde_json::from_str(&text) {
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(CRYPTOCOM_WS_MARKET).await
+                {
                     Ok(v) => v,
-                    Err(_) => continue,
-                };
-                // Skip subscribe ack (has method=subscribe but no book data)
-                if value.get("method").and_then(|m| m.as_str()) == Some("subscribe") {
-                    let has_data = value.get("params").and_then(|p| p.get("data")).is_some()
-                        || value.get("result").and_then(|r| r.get("data")).is_some();
-                    if !has_data {
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
                         continue;
                     }
+                };
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                if ws_stream
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        subscribe_msg.to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    if !reconnect || tx.is_closed() {
+                        break;
+                    }
+                    continue;
                 }
 
-                let channel = value
-                    .get("params")
-                    .and_then(|p| p.get("channel"))
-                    .and_then(|c| c.as_str())
-                    .or_else(|| {
-                        value
-                            .get("result")
-                            .and_then(|r| r.get("channel"))
-                            .and_then(|c| c.as_str())
-                    });
+                let (_write, mut read) = ws_stream.split();
+                let mut books: HashMap<String, (BookMap, BookMap)> = HashMap::new();
 
-                let (data_bids, data_asks) = if channel == Some("book.update") {
-                    // Delta: result.data[0].update.bids/asks or params.data.update
-                    let item = value
-                        .get("result")
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    // Skip subscribe ack (has method=subscribe but no book data)
+                    if value.get("method").and_then(|m| m.as_str()) == Some("subscribe") {
+                        let has_data = value.get("params").and_then(|p| p.get("data")).is_some()
+                            || value.get("result").and_then(|r| r.get("data")).is_some();
+                        if !has_data {
+                            continue;
+                        }
+                    }
+
+                    let channel = value
+                        .get("params")
+                        .and_then(|p| p.get("channel"))
+                        .and_then(|c| c.as_str())
+                        .or_else(|| {
+                            value
+                                .get("result")
+                                .and_then(|r| r.get("channel"))
+                                .and_then(|c| c.as_str())
+                        });
+
+                    let result_obj = value.get("result");
+                    let params_obj = value.get("params");
+                    let item = result_obj
                         .and_then(|r| r.get("data"))
                         .and_then(|d| d.as_array())
                         .and_then(|a| a.first())
-                        .or_else(|| value.get("params").and_then(|p| p.get("data")));
-                    let upd = item.and_then(|i| i.get("update"));
-                    let b = upd.and_then(|u| u.get("bids"));
-                    let a = upd.and_then(|u| u.get("asks"));
-                    (b, a)
-                } else {
-                    // Full snapshot: replace book
-                    let item = value.get("params").and_then(|p| p.get("data")).or_else(|| {
-                        value
-                            .get("result")
-                            .and_then(|r| r.get("data"))
-                            .and_then(|d| d.as_array())
-                            .and_then(|a| a.first())
-                    });
-                    (
-                        item.and_then(|i| i.get("bids")),
-                        item.and_then(|i| i.get("asks")),
-                    )
-                };
+                        .or_else(|| params_obj.and_then(|p| p.get("data")));
+                    let item = match item {
+                        Some(i) => i,
+                        None => continue,
+                    };
 
-                if channel == Some("book.update") {
-                    apply_levels(&mut bids, data_bids);
-                    apply_levels(&mut asks, data_asks);
-                } else {
-                    bids.clear();
-                    asks.clear();
-                    apply_levels(&mut bids, data_bids);
-                    apply_levels(&mut asks, data_asks);
+                    // Get symbol: result.instrument_name, result.subscription "book.BTC_USDT.10", channel "book.BTC_USDT.10", item.instrument_name
+                    // Note: channel is "book.update" for deltas - do NOT parse channel for symbol in that case
+                    let cryptocom_sym = result_obj
+                        .and_then(|r| r.get("instrument_name"))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            result_obj
+                                .and_then(|r| r.get("subscription"))
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.strip_prefix("book."))
+                                .and_then(|s| s.split('.').next())
+                        })
+                        .or_else(|| {
+                            params_obj
+                                .and_then(|p| p.get("subscription"))
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.strip_prefix("book."))
+                                .and_then(|s| s.split('.').next())
+                        })
+                        .or_else(|| {
+                            // Only parse channel if it looks like "book.X.10" (not "book.update")
+                            channel
+                                .filter(|c| !c.contains("update"))
+                                .and_then(|c| c.strip_prefix("book."))
+                                .and_then(|s| s.split('.').next())
+                        })
+                        .or_else(|| item.get("instrument_name").and_then(|v| v.as_str()));
+                    let symbol_std = match cryptocom_sym {
+                        Some(s) => standard_symbol_for_cex_ws_response(s, &CexExchange::Cryptocom),
+                        None => continue,
+                    };
+
+                    let (data_bids, data_asks) = if channel == Some("book.update") {
+                        let upd = item.get("update");
+                        (
+                            upd.and_then(|u| u.get("bids")),
+                            upd.and_then(|u| u.get("asks")),
+                        )
+                    } else {
+                        (item.get("bids"), item.get("asks"))
+                    };
+
+                    let (bids, asks) = books
+                        .entry(symbol_std.clone())
+                        .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
+                    if channel == Some("book.update") {
+                        apply_levels(bids, data_bids);
+                        apply_levels(asks, data_asks);
+                    } else {
+                        bids.clear();
+                        asks.clear();
+                        apply_levels(bids, data_bids);
+                        apply_levels(asks, data_asks);
+                    }
+
+                    let Some((bid, ask, bid_qty, ask_qty)) = best_bid_ask(bids, asks) else {
+                        continue;
+                    };
+
+                    let price = CexPrice {
+                        symbol: symbol_std,
+                        mid_price: find_mid_price(bid, ask),
+                        bid_price: bid,
+                        ask_price: ask,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Cryptocom),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
                 }
 
-                let Some((bid, ask, bid_qty, ask_qty)) = best_bid_ask(&bids, &asks) else {
-                    continue;
-                };
-
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Cryptocom),
-                };
-                if tx.send(price).await.is_err() {
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

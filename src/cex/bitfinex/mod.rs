@@ -181,82 +181,136 @@ impl CEXTrait for Bitfinex {
     /// Connection stays open; incoming ticker updates are sent over the returned Receiver.
     async fn stream_price_websocket(
         &self,
-        symbol: &str,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
-        if symbol.is_empty() {
+        if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
-                "Symbol cannot be empty".to_string(),
+                "At least one symbol required".to_string(),
             ));
         }
 
-        let bitfinex_symbol = format_symbol_for_exchange_ws(symbol, &CexExchange::Bitfinex)?;
+        let bitfinex_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Bitfinex))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(BITFINEX_WS_URL)
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Bitfinex WebSocket connect: {}", e))
-            })?;
-
-        let subscribe_msg = serde_json::json!({
-            "event": "subscribe",
-            "channel": "ticker",
-            "symbol": bitfinex_symbol
-        });
-        ws_stream
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                subscribe_msg.to_string(),
-            ))
-            .await
-            .map_err(|e| {
-                MarketScannerError::ApiError(format!("Bitfinex WebSocket send: {}", e))
-            })?;
-
-        let (_write, mut read) = ws_stream.split();
         let (tx, rx) = mpsc::channel(64);
-        let symbol_std = standard_symbol_for_cex_ws_response(symbol, &CexExchange::Bitfinex);
 
         tokio::spawn(async move {
-            while let Some(Ok(msg)) = read.next().await {
-                let text = match msg.into_text() {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-                let value: serde_json::Value = match serde_json::from_str(&text) {
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+
+            loop {
+                let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BITFINEX_WS_URL).await
+                {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(_) => {
+                        if !reconnect || tx.is_closed() {
+                            break;
+                        }
+                        attempts = attempts.saturating_add(1);
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        continue;
+                    }
                 };
-                if value.get("event").is_some() {
-                    continue;
+
+                backoff = std::time::Duration::from_secs(1);
+                attempts = 0;
+
+                for bitfinex_symbol in &bitfinex_symbols {
+                    let subscribe_msg = serde_json::json!({
+                        "event": "subscribe",
+                        "channel": "ticker",
+                        "symbol": bitfinex_symbol
+                    });
+                    if ws_stream
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            subscribe_msg.to_string(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-                let arr = match value.as_array() {
-                    Some(a) if a.len() >= 2 => a,
-                    _ => continue,
-                };
-                let data = match arr[1].as_array() {
-                    Some(d) if d.len() >= 4 => d,
-                    _ => continue,
-                };
-                let bid = match data[0].as_f64() {
-                    Some(b) if b > 0.0 => b,
-                    _ => continue,
-                };
-                let bid_qty = data[1].as_f64().unwrap_or(0.0).abs();
-                let ask = match data[2].as_f64() {
-                    Some(a) if a > 0.0 => a,
-                    _ => continue,
-                };
-                let ask_qty = data[3].as_f64().unwrap_or(0.0).abs();
-                let price = CexPrice {
-                    symbol: symbol_std.clone(),
-                    mid_price: find_mid_price(bid, ask),
-                    bid_price: bid,
-                    ask_price: ask,
-                    bid_qty,
-                    ask_qty,
-                    timestamp: get_timestamp_millis(),
-                    exchange: Exchange::Cex(CexExchange::Bitfinex),
-                };
-                if tx.send(price).await.is_err() {
+
+                let (_write, mut read) = ws_stream.split();
+                let mut chan_to_symbol: std::collections::HashMap<u64, String> =
+                    std::collections::HashMap::new();
+
+                while let Some(Ok(msg)) = read.next().await {
+                    let text = match msg.into_text() {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let value: serde_json::Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    if let (Some(ev), Some(chan_id), Some(sym)) = (
+                        value.get("event").and_then(|e| e.as_str()),
+                        value.get("chanId").and_then(|c| c.as_u64()),
+                        value.get("symbol").and_then(|s| s.as_str()),
+                    ) {
+                        if ev == "subscribed" {
+                            chan_to_symbol.insert(
+                                chan_id,
+                                standard_symbol_for_cex_ws_response(sym, &CexExchange::Bitfinex),
+                            );
+                        }
+                        continue;
+                    }
+                    let arr = match value.as_array() {
+                        Some(a) if a.len() >= 2 => a,
+                        _ => continue,
+                    };
+                    let chan_id = match arr[0].as_u64() {
+                        Some(id) => id,
+                        None => continue,
+                    };
+                    let symbol_std = match chan_to_symbol.get(&chan_id) {
+                        Some(s) => s.clone(),
+                        None => continue,
+                    };
+                    let data = match arr[1].as_array() {
+                        Some(d) if d.len() >= 4 => d,
+                        _ => continue,
+                    };
+                    let bid = match data[0].as_f64() {
+                        Some(b) if b > 0.0 => b,
+                        _ => continue,
+                    };
+                    let bid_qty = data[1].as_f64().unwrap_or(0.0).abs();
+                    let ask = match data[2].as_f64() {
+                        Some(a) if a > 0.0 => a,
+                        _ => continue,
+                    };
+                    let ask_qty = data[3].as_f64().unwrap_or(0.0).abs();
+                    let price = CexPrice {
+                        symbol: symbol_std,
+                        mid_price: find_mid_price(bid, ask),
+                        bid_price: bid,
+                        ask_price: ask,
+                        bid_qty,
+                        ask_qty,
+                        timestamp: get_timestamp_millis(),
+                        exchange: Exchange::Cex(CexExchange::Bitfinex),
+                    };
+                    if tx.send(price).await.is_err() {
+                        return;
+                    }
+                }
+
+                if !reconnect || tx.is_closed() {
                     break;
                 }
             }

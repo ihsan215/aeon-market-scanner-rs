@@ -10,6 +10,8 @@ pub struct CoinbaseOrderBookResponse {
 pub struct CoinbaseTickerWs {
     #[serde(rename = "type")]
     pub msg_type: String,
+    #[serde(rename = "product_id", default)]
+    pub product_id: String,
     #[serde(rename = "best_bid")]
     pub best_bid: String,
     #[serde(rename = "best_bid_size")]
