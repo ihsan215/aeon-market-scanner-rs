@@ -42,7 +42,7 @@ Add the dependency:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.1.0"
+aeon-market-scanner-rs = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
