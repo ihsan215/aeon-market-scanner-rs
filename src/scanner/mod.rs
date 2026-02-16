@@ -1,6 +1,6 @@
 use crate::common::{
-    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice,
-    MarketScannerError, effective_price, fee_rate,
+    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, FeeOverrides,
+    MarketScannerError, effective_price_with_overrides, fee_rate_with_overrides,
 };
 use crate::dex::chains::Token;
 use crate::{
@@ -36,6 +36,7 @@ impl ArbitrageScanner {
         base_token: Option<&Token>,
         quote_token: Option<&Token>,
         quote_amount: Option<f64>,
+        fee_overrides: Option<&FeeOverrides>,
     ) -> Result<Vec<ArbitrageOpportunity>, MarketScannerError> {
         // Fetch all prices in parallel
         let (cex_prices, dex_prices) = tokio::try_join!(
@@ -44,7 +45,8 @@ impl ArbitrageScanner {
         )?;
 
         // Find arbitrage opportunities by matching buy and sell candidates
-        let opportunities = Self::find_opportunities(&cex_prices, &dex_prices);
+        let opportunities =
+            Self::opportunities_from_prices(&cex_prices, &dex_prices, fee_overrides);
 
         // Sort by profitability (most profitable first)
         let mut opportunities = opportunities;
@@ -55,6 +57,19 @@ impl ArbitrageScanner {
         });
 
         Ok(opportunities)
+    }
+
+    /// Compute arbitrage opportunities from already-fetched price snapshots.
+    ///
+    /// This is useful if you want to provide your own price sources (or test deterministically)
+    /// while still using the crate's matching/sorting logic. If `fee_overrides` is provided,
+    /// all effective price and commission calculations will use it.
+    pub fn opportunities_from_prices(
+        cex_prices: &[CexPrice],
+        dex_prices: &[DexPrice],
+        fee_overrides: Option<&FeeOverrides>,
+    ) -> Vec<ArbitrageOpportunity> {
+        Self::find_opportunities(cex_prices, dex_prices, fee_overrides)
     }
 
     /// Fetches CEX prices in parallel
@@ -118,14 +133,19 @@ impl ArbitrageScanner {
     fn find_opportunities(
         cex_prices: &[CexPrice],
         dex_prices: &[DexPrice],
+        fee_overrides: Option<&FeeOverrides>,
     ) -> Vec<ArbitrageOpportunity> {
         let mut opportunities = Vec::new();
 
         // Create buy candidates: effective ask = ask × (1 + fee), sorted lowest first
         let mut buy_candidates = Vec::new();
         for cex_price in cex_prices {
-            let effective =
-                effective_price(cex_price.ask_price, &cex_price.exchange, AmountSide::Buy);
+            let effective = effective_price_with_overrides(
+                cex_price.ask_price,
+                &cex_price.exchange,
+                AmountSide::Buy,
+                fee_overrides,
+            );
             buy_candidates.push((
                 effective,
                 PriceData::Cex(cex_price.clone()),
@@ -133,8 +153,12 @@ impl ArbitrageScanner {
             ));
         }
         for dex_price in dex_prices {
-            let effective =
-                effective_price(dex_price.ask_price, &dex_price.exchange, AmountSide::Buy);
+            let effective = effective_price_with_overrides(
+                dex_price.ask_price,
+                &dex_price.exchange,
+                AmountSide::Buy,
+                fee_overrides,
+            );
             buy_candidates.push((
                 effective,
                 PriceData::Dex(dex_price.clone()),
@@ -146,8 +170,12 @@ impl ArbitrageScanner {
         // Create sell candidates: effective bid = bid × (1 − fee), sorted highest first
         let mut sell_candidates = Vec::new();
         for cex_price in cex_prices {
-            let effective =
-                effective_price(cex_price.bid_price, &cex_price.exchange, AmountSide::Sell);
+            let effective = effective_price_with_overrides(
+                cex_price.bid_price,
+                &cex_price.exchange,
+                AmountSide::Sell,
+                fee_overrides,
+            );
             sell_candidates.push((
                 effective,
                 PriceData::Cex(cex_price.clone()),
@@ -155,8 +183,12 @@ impl ArbitrageScanner {
             ));
         }
         for dex_price in dex_prices {
-            let effective =
-                effective_price(dex_price.bid_price, &dex_price.exchange, AmountSide::Sell);
+            let effective = effective_price_with_overrides(
+                dex_price.bid_price,
+                &dex_price.exchange,
+                AmountSide::Sell,
+                fee_overrides,
+            );
             sell_candidates.push((
                 effective,
                 PriceData::Dex(dex_price.clone()),
@@ -183,7 +215,7 @@ impl ArbitrageScanner {
                 let executable_quantity = buy_qty.min(sell_qty);
 
                 let (src_comm_rate, dest_comm_rate) =
-                    Self::extract_commission_rates(source_data, dest_data);
+                    Self::extract_commission_rates(source_data, dest_data, fee_overrides);
                 // Both in quote currency (e.g. USD): buy-side fee on notional, sell-side fee on notional
                 let source_commission_quote =
                     *effective_ask * executable_quantity * (src_comm_rate / 100.0);
@@ -213,14 +245,18 @@ impl ArbitrageScanner {
     }
 
     /// Extracts commission rates in percent from price data (e.g. 0.1 = 0.1%)
-    fn extract_commission_rates(buy_data: &PriceData, sell_data: &PriceData) -> (f64, f64) {
+    fn extract_commission_rates(
+        buy_data: &PriceData,
+        sell_data: &PriceData,
+        fee_overrides: Option<&FeeOverrides>,
+    ) -> (f64, f64) {
         let src = match buy_data {
-            PriceData::Cex(p) => fee_rate(&p.exchange) * 100.0,
-            PriceData::Dex(p) => fee_rate(&p.exchange) * 100.0,
+            PriceData::Cex(p) => fee_rate_with_overrides(&p.exchange, fee_overrides) * 100.0,
+            PriceData::Dex(p) => fee_rate_with_overrides(&p.exchange, fee_overrides) * 100.0,
         };
         let dest = match sell_data {
-            PriceData::Cex(p) => fee_rate(&p.exchange) * 100.0,
-            PriceData::Dex(p) => fee_rate(&p.exchange) * 100.0,
+            PriceData::Cex(p) => fee_rate_with_overrides(&p.exchange, fee_overrides) * 100.0,
+            PriceData::Dex(p) => fee_rate_with_overrides(&p.exchange, fee_overrides) * 100.0,
         };
         (src, dest)
     }

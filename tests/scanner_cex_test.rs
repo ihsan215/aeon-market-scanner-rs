@@ -20,6 +20,7 @@ async fn test_scan_cex_arbitrage_ethusdt() {
         None,
         None,
         None,
+        None,
     )
     .await;
 

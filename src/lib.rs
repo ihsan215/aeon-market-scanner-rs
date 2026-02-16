@@ -45,8 +45,10 @@ pub use cex::{
 };
 
 pub use common::{
-    CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, DexRouteSummary, Exchange,
-    ExchangeTrait, MarketScannerError,
+    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice,
+    DexRouteSummary, Exchange, ExchangeTrait, FeeOverrides, MarketScannerError, effective_price,
+    effective_price_with_overrides, fee_rate, fee_rate_with_overrides, taker_fee_rate,
+    taker_fee_rate_with_overrides,
 };
 pub use dex::KyberSwap;
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};

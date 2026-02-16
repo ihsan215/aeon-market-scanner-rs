@@ -125,6 +125,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
         None,
         None,
         None,
+        None,
     )
     .await?;
 
@@ -180,12 +181,60 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
         Some(&weth),
         Some(&usdt),
         Some(quote_amount),
+        None,
     )
     .await?;
 
     println!("Found {} opportunities", opportunities.len());
     Ok(())
 }
+```
+
+## Fees / commissions
+
+Arbitrage opportunities are evaluated using **effective prices** that account for taker fees:
+
+- **Buy side**: effective ask = \(ask \times (1 + fee)\)
+- **Sell side**: effective bid = \(bid \times (1 - fee)\)
+
+This means the reported spread/profitability is **fee-aware** by default. Fee rates are defined as default-tier spot **taker** fees in `src/common/commission.rs` (VIP/volume discounts are not applied).
+
+### Override fee rates (VIP / custom tiers)
+
+If you want to use your own fee rates (e.g. VIP tier), create `FeeOverrides` and pass it into `scan_arbitrage_opportunities(...)`.
+
+```rust,no_run
+use aeon_market_scanner_rs::{ArbitrageScanner, CexExchange, FeeOverrides};
+
+let overrides = FeeOverrides::default()
+    .with_cex_taker_fee(CexExchange::Binance, 0.00075) // 0.075%
+    .with_cex_taker_fee(CexExchange::OKX, 0.0008);     // 0.08%
+
+let opportunities = ArbitrageScanner::scan_arbitrage_opportunities(
+    "BTCUSDT",
+    &[CexExchange::Binance, CexExchange::OKX],
+    None,
+    None,
+    None,
+    None,
+    Some(&overrides),
+)
+.await?;
+# let _ = opportunities;
+```
+
+### Read fee rates programmatically
+
+Fee rates are exposed as `f64` decimals (e.g. `0.001` = `0.1%`):
+
+```rust
+use aeon_market_scanner_rs::{CexExchange, Exchange, fee_rate, taker_fee_rate};
+
+let binance_taker = taker_fee_rate(&CexExchange::Binance);
+println!("Binance taker fee = {} ({}%)", binance_taker, binance_taker * 100.0);
+
+let okx_fee = fee_rate(&Exchange::Cex(CexExchange::OKX));
+println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
 ```
 
 ## Notes / caveats

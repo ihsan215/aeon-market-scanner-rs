@@ -32,6 +32,7 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
         Some(&eth_token),
         Some(&usdt_token),
         Some(QUOTE_AMOUNT),
+        None,
     )
     .await;
 

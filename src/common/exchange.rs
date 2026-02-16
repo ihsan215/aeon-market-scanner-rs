@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 // Common exchange enum definition
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Exchange {
     Cex(CexExchange),
     Dex(DexAggregator),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum CexExchange {
     Binance,
     Bybit,
@@ -28,7 +28,7 @@ pub enum CexExchange {
     Cryptocom,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum DexAggregator {
     KyberSwap,
 }

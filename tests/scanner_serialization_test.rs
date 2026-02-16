@@ -16,6 +16,7 @@ async fn test_arbitrage_serialization_ethusdt() {
         None,
         None,
         None,
+        None,
     )
     .await;
 

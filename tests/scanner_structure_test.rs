@@ -21,6 +21,7 @@ async fn test_arbitrage_opportunity_structure_ethusdt() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
