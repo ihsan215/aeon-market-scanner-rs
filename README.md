@@ -190,6 +190,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 
 ## Notes / caveats
 
+- **Public APIs**: this crate uses exchanges' **public REST and (where available) public WebSocket** market data endpoints. No API keys are required for the features in this crate. Usage is still subject to each provider’s rate limits and terms.
 - **Network + rate limits**: exchange APIs can rate-limit or temporarily fail; callers should expect errors.
 - **Symbols**: most examples use common `BASEQUOTE` format like `BTCUSDT`. Some exchanges may require different formatting internally; the crate normalizes per-exchange.
 - **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if enabled).
