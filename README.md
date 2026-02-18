@@ -4,10 +4,11 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 - REST price fetching (`get_price`)
 - Streaming WebSocket price feeds (`stream_price_websocket`) with reconnect + exponential backoff
-- Arbitrage scanning across multiple exchanges (CEX↔CEX and optional DEX legs)
+- Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets`)
+- Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
 
-> Crate name on crates.io: `aeon-market-scanner-rs`  
-> Rust import path: `aeon_market_scanner_rs`
+> **Crate:** [crates.io/crates/aeon-market-scanner-rs](https://crates.io/crates/aeon-market-scanner-rs) · **Docs:** [docs.rs/aeon-market-scanner-rs](https://docs.rs/aeon-market-scanner-rs)  
+> Import: `aeon_market_scanner_rs`
 
 ## Supported exchanges
 
@@ -38,13 +39,21 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 ## Installation
 
-Add the dependency:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.2.0"
+aeon-market-scanner-rs = "0.3"
 tokio = { version = "1", features = ["full"] }
 ```
+
+Or pin the latest patch:
+
+```toml
+aeon-market-scanner-rs = "0.3.0"
+```
+
+Then run `cargo build`.
 
 ## Quickstart: fetch a CEX price (REST)
 
