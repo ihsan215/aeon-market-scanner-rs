@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-02-06
+
+### Changed
+
+- README: installation section and crate links updated for 0.3.x.
+
 ## [0.3.0] - 2026-02-06
 
 ### Added

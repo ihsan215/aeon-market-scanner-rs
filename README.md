@@ -50,7 +50,7 @@ tokio = { version = "1", features = ["full"] }
 Or pin the latest patch:
 
 ```toml
-aeon-market-scanner-rs = "0.3.0"
+aeon-market-scanner-rs = "0.3.1"
 ```
 
 Then run `cargo build`.
