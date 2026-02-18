@@ -190,6 +190,40 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 }
 ```
 
+## Scan arbitrage opportunities from WebSocket streams
+
+Connect to CEX WebSocket feeds and continuously receive arbitrage opportunity snapshots:
+
+```rust,no_run
+use aeon_market_scanner_rs::{ArbitrageScanner, CexExchange};
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    let mut rx = ArbitrageScanner::scan_arbitrage_from_websockets(
+        &["BTCUSDT", "ETHUSDT"],
+        &[CexExchange::Binance, CexExchange::OKX, CexExchange::Bybit],
+        None,
+        true,
+        Some(10),
+    )
+    .await?;
+
+    while let Some(opps) = rx.recv().await {
+        for o in opps.iter().take(5) {
+            println!(
+                "{} -> {} {} spread={:.4} ({:.3}%)",
+                o.source_exchange, o.destination_exchange, o.symbol,
+                o.spread, o.spread_percentage
+            );
+        }
+    }
+
+    Ok(())
+}
+```
+
+Exchanges that do not support WebSocket are skipped. The receiver emits opportunity snapshots (sorted by profitability) whenever new prices arrive.
+
 ## Fees / commissions
 
 Arbitrage opportunities are evaluated using **effective prices** that account for taker fees:

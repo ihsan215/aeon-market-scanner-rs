@@ -1,6 +1,6 @@
 use crate::common::{
-    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, FeeOverrides,
-    MarketScannerError, effective_price_with_overrides, fee_rate_with_overrides,
+    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice, Exchange,
+    FeeOverrides, MarketScannerError, effective_price_with_overrides, fee_rate_with_overrides,
 };
 use crate::dex::chains::Token;
 use crate::{
@@ -8,6 +8,8 @@ use crate::{
     KyberSwap, Mexc, OKX, Upbit,
 };
 use futures::future::join_all;
+use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 mod opportunity;
 pub use opportunity::{ArbitrageOpportunity, PriceData};
@@ -70,6 +72,195 @@ impl ArbitrageScanner {
         fee_overrides: Option<&FeeOverrides>,
     ) -> Vec<ArbitrageOpportunity> {
         Self::find_opportunities(cex_prices, dex_prices, fee_overrides)
+    }
+
+    /// Connects to the given CEX WebSocket streams and continuously emits arbitrage
+    /// opportunities as new prices arrive. Only exchanges that support WebSocket
+    /// are used; others are skipped.
+    ///
+    /// Returns a receiver of opportunity snapshots (sorted by profitability).
+    /// When all WS connections have closed, the receiver will receive `None`.
+    pub async fn scan_arbitrage_from_websockets(
+        symbols: &[&str],
+        cex_exchanges: &[CexExchange],
+        fee_overrides: Option<&FeeOverrides>,
+        reconnect: bool,
+        max_attempts: Option<u32>,
+    ) -> Result<mpsc::Receiver<Vec<ArbitrageOpportunity>>, MarketScannerError> {
+        let ws_exchanges: Vec<_> = cex_exchanges
+            .iter()
+            .filter(|ex| Self::exchange_supports_websocket(ex))
+            .cloned()
+            .collect();
+
+        if ws_exchanges.is_empty() {
+            return Err(MarketScannerError::ApiError(
+                "No WebSocket-supported exchanges in the list".to_string(),
+            ));
+        }
+
+        let mut receivers: Vec<(CexExchange, mpsc::Receiver<CexPrice>)> = Vec::new();
+        for ex in &ws_exchanges {
+            let rx =
+                Self::stream_cex_prices_websocket(ex, symbols, reconnect, max_attempts).await?;
+            receivers.push((ex.clone(), rx));
+        }
+
+        let (tx, rx) = mpsc::channel(64);
+        let (tx_prices, mut rx_prices) = mpsc::channel::<CexPrice>(256);
+        let symbols_vec: Vec<String> = symbols.iter().map(|s| (*s).to_string()).collect();
+        let fee_overrides_owned = fee_overrides.cloned();
+
+        for (_, mut ws_rx) in receivers {
+            let tx_fwd = tx_prices.clone();
+            tokio::spawn(async move {
+                while let Some(price) = ws_rx.recv().await {
+                    let _ = tx_fwd.send(price).await;
+                }
+            });
+        }
+        drop(tx_prices);
+
+        tokio::spawn(async move {
+            let mut cache: HashMap<(Exchange, String), CexPrice> = HashMap::new();
+            let symbols_set: Vec<String> = symbols_vec;
+
+            while let Some(price) = rx_prices.recv().await {
+                // Geçersiz fiyatları atla; 0 gelen güncelleme önceki geçerli fiyatı üzerine yazmasın
+                if price.mid_price <= 0.0 || price.bid_price <= 0.0 || price.ask_price <= 0.0 {
+                    continue;
+                }
+                let symbol = price.symbol.clone();
+                let ex = price.exchange.clone();
+                cache.insert((ex.clone(), symbol.clone()), price);
+
+                let mut all_opps = Vec::new();
+                for symbol in &symbols_set {
+                    let prices: Vec<CexPrice> = cache
+                        .values()
+                        .filter(|p| p.symbol == *symbol)
+                        .cloned()
+                        .collect();
+                    if prices.len() >= 2 {
+                        let opps = ArbitrageScanner::opportunities_from_prices(
+                            &prices,
+                            &[],
+                            fee_overrides_owned.as_ref(),
+                        );
+                        all_opps.extend(opps);
+                    }
+                }
+                all_opps.sort_by(|a, b| {
+                    b.spread_percentage
+                        .partial_cmp(&a.spread_percentage)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                if tx.send(all_opps).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+
+    fn exchange_supports_websocket(ex: &CexExchange) -> bool {
+        match ex {
+            CexExchange::Binance => Binance::new().supports_websocket(),
+            CexExchange::Bybit => Bybit::new().supports_websocket(),
+            CexExchange::MEXC => Mexc::new().supports_websocket(),
+            CexExchange::OKX => OKX::new().supports_websocket(),
+            CexExchange::Gateio => Gateio::new().supports_websocket(),
+            CexExchange::Kucoin => Kucoin::new().supports_websocket(),
+            CexExchange::Bitget => Bitget::new().supports_websocket(),
+            CexExchange::Btcturk => Btcturk::new().supports_websocket(),
+            CexExchange::Htx => Htx::new().supports_websocket(),
+            CexExchange::Coinbase => Coinbase::new().supports_websocket(),
+            CexExchange::Kraken => Kraken::new().supports_websocket(),
+            CexExchange::Bitfinex => Bitfinex::new().supports_websocket(),
+            CexExchange::Upbit => Upbit::new().supports_websocket(),
+            CexExchange::Cryptocom => Cryptocom::new().supports_websocket(),
+        }
+    }
+
+    async fn stream_cex_prices_websocket(
+        exchange: &CexExchange,
+        symbols: &[&str],
+        reconnect: bool,
+        max_attempts: Option<u32>,
+    ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
+        match exchange {
+            CexExchange::Binance => {
+                Binance::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Bybit => {
+                Bybit::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::MEXC => {
+                Mexc::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::OKX => {
+                OKX::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Gateio => {
+                Gateio::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Kucoin => {
+                Kucoin::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Bitget => {
+                Bitget::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Btcturk => {
+                Btcturk::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Htx => {
+                Htx::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Coinbase => {
+                Coinbase::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Kraken => {
+                Kraken::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Bitfinex => {
+                Bitfinex::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Upbit => {
+                Upbit::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+            CexExchange::Cryptocom => {
+                Cryptocom::new()
+                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .await
+            }
+        }
     }
 
     /// Fetches CEX prices in parallel

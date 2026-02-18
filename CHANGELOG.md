@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `ArbitrageScanner::scan_arbitrage_from_websockets(...)` – connect to CEX WebSocket streams and continuously receive arbitrage opportunity snapshots.
 - Fee override support via `FeeOverrides` (VIP/custom tiers) for arbitrage calculations.
 - Public helper `ArbitrageScanner::opportunities_from_prices(...)` for deterministic/offline opportunity evaluation.
 - Additional public re-exports for fee helpers at crate root (e.g. `FeeOverrides`, `fee_rate`, `taker_fee_rate`).
