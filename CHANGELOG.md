@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-06
+
+### Added
+
+- **DEX pool price listener**: stream live prices from Uniswap V2 / V3 pools over WebSocket RPC (`stream_pool_prices`, `PoolListenerConfig`). Supports `ListenMode::EveryBlock` or `OnSwapEvent`, `PriceDirection` (token1/token0 or token0/token1), optional reserves and `sqrt_price_x96`, and configurable reconnect (`reconnect_attempts`, `reconnect_delay_ms`).
+
+### Changed
+
+- **CEX WebSocket reconnect (breaking)**: unified with pool listener. `stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)` replaces `(symbols, reconnect, max_attempts)`. `reconnect_attempts`: 0 = no reconnect, n = up to n reconnects; `reconnect_delay_ms`: delay in milliseconds (0 → 1000 ms). Fixed delay between attempts (no exponential backoff).
+- **Scanner**: `scan_arbitrage_from_websockets(..., reconnect_attempts, reconnect_delay_ms)` instead of `(..., reconnect, max_attempts)`.
+
 ## [0.3.1] - 2026-02-06
 
 ### Changed

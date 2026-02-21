@@ -11,7 +11,7 @@ async fn gateio_ws_stream_multi_symbol() {
 
     let exchange = Gateio::new();
     let mut rx = exchange
-        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, None)
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], 5, 5000)
         .await
         .expect("Gate.io WebSocket stream");
 

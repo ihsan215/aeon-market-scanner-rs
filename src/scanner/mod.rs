@@ -84,8 +84,8 @@ impl ArbitrageScanner {
         symbols: &[&str],
         cex_exchanges: &[CexExchange],
         fee_overrides: Option<&FeeOverrides>,
-        reconnect: bool,
-        max_attempts: Option<u32>,
+        reconnect_attempts: u32,
+        reconnect_delay_ms: u64,
     ) -> Result<mpsc::Receiver<Vec<ArbitrageOpportunity>>, MarketScannerError> {
         let ws_exchanges: Vec<_> = cex_exchanges
             .iter()
@@ -101,8 +101,13 @@ impl ArbitrageScanner {
 
         let mut receivers: Vec<(CexExchange, mpsc::Receiver<CexPrice>)> = Vec::new();
         for ex in &ws_exchanges {
-            let rx =
-                Self::stream_cex_prices_websocket(ex, symbols, reconnect, max_attempts).await?;
+            let rx = Self::stream_cex_prices_websocket(
+                ex,
+                symbols,
+                reconnect_attempts,
+                reconnect_delay_ms,
+            )
+            .await?;
             receivers.push((ex.clone(), rx));
         }
 
@@ -186,78 +191,78 @@ impl ArbitrageScanner {
     async fn stream_cex_prices_websocket(
         exchange: &CexExchange,
         symbols: &[&str],
-        reconnect: bool,
-        max_attempts: Option<u32>,
+        reconnect_attempts: u32,
+        reconnect_delay_ms: u64,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
         match exchange {
             CexExchange::Binance => {
                 Binance::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Bybit => {
                 Bybit::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::MEXC => {
                 Mexc::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::OKX => {
                 OKX::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Gateio => {
                 Gateio::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Kucoin => {
                 Kucoin::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Bitget => {
                 Bitget::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Btcturk => {
                 Btcturk::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Htx => {
                 Htx::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Coinbase => {
                 Coinbase::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Kraken => {
                 Kraken::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Bitfinex => {
                 Bitfinex::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Upbit => {
                 Upbit::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
             CexExchange::Cryptocom => {
                 Cryptocom::new()
-                    .stream_price_websocket(symbols, reconnect, max_attempts)
+                    .stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
                     .await
             }
         }

@@ -9,7 +9,7 @@ async fn coinbase_ws_stream_multi_symbol() {
 
     let exchange = Coinbase::new();
     let mut rx = exchange
-        .stream_price_websocket(&["BTCUSD", "ETHUSD"], true, None)
+        .stream_price_websocket(&["BTCUSD", "ETHUSD"], 5, 5000)
         .await
         .expect("Coinbase WebSocket stream");
 

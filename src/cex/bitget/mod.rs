@@ -139,8 +139,8 @@ impl CEXTrait for Bitget {
     async fn stream_price_websocket(
         &self,
         symbols: &[&str],
-        reconnect: bool,
-        max_attempts: Option<u32>,
+        reconnect_attempts: u32,
+        reconnect_delay_ms: u64,
     ) -> Result<mpsc::Receiver<CexPrice>, MarketScannerError> {
         if symbols.is_empty() {
             return Err(MarketScannerError::InvalidSymbol(
@@ -165,34 +165,27 @@ impl CEXTrait for Bitget {
             .collect();
 
         let (tx, rx) = mpsc::channel(64);
+        let delay =
+            std::time::Duration::from_millis(if reconnect_delay_ms == 0 { 1000 } else { reconnect_delay_ms });
 
         tokio::spawn(async move {
-            let mut backoff = std::time::Duration::from_secs(1);
-            let max_backoff = std::time::Duration::from_secs(30);
-            let mut attempts: u32 = 0;
-
+            let mut attempt = 0u32;
             loop {
+                attempt += 1;
                 let (mut ws_stream, _) = match tokio_tungstenite::connect_async(BITGET_WS_URL).await
                 {
                     Ok(v) => v,
                     Err(_) => {
-                        if !reconnect || tx.is_closed() {
+                        if tx.is_closed()
+                            || reconnect_attempts == 0
+                            || attempt > reconnect_attempts
+                        {
                             break;
                         }
-                        attempts = attempts.saturating_add(1);
-                        if let Some(max) = max_attempts {
-                            if attempts >= max {
-                                break;
-                            }
-                        }
-                        tokio::time::sleep(backoff).await;
-                        backoff = std::cmp::min(max_backoff, backoff.saturating_mul(2));
+                        tokio::time::sleep(delay).await;
                         continue;
                     }
                 };
-
-                backoff = std::time::Duration::from_secs(1);
-                attempts = 0;
 
                 let subscribe_msg = serde_json::json!({
                     "op": "subscribe",
@@ -205,15 +198,13 @@ impl CEXTrait for Bitget {
                     .await
                     .is_err()
                 {
-                    if !reconnect || tx.is_closed() {
+                    if tx.is_closed()
+                        || reconnect_attempts == 0
+                        || attempt > reconnect_attempts
+                    {
                         break;
                     }
-                    attempts = attempts.saturating_add(1);
-                    if let Some(max) = max_attempts {
-                        if attempts >= max {
-                            break;
-                        }
-                    }
+                    tokio::time::sleep(delay).await;
                     continue;
                 }
 
@@ -296,9 +287,13 @@ impl CEXTrait for Bitget {
                     }
                 }
 
-                if !reconnect || tx.is_closed() {
+                if tx.is_closed()
+                    || reconnect_attempts == 0
+                    || attempt > reconnect_attempts
+                {
                     break;
                 }
+                tokio::time::sleep(delay).await;
             }
         });
 

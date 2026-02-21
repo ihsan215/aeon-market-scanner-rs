@@ -9,7 +9,7 @@ async fn kucoin_ws_stream_multi_symbol() {
 
     let exchange = Kucoin::new();
     let mut rx = exchange
-        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, None)
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], 5, 5000)
         .await
         .expect("KuCoin WebSocket stream");
 

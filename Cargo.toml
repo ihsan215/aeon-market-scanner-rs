@@ -1,6 +1,6 @@
 [package]
 name = "aeon-market-scanner-rs"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.85"
 
@@ -36,3 +36,5 @@ rust_decimal = { version = "1.36", features = ["serde-with-str"] }
 futures = "0.3"
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 prost = "0.13"
+ethers = { version = "2.0", features = ["ws", "rustls"], default-features = false }
+dotenvy = "0.15"

@@ -23,7 +23,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 //! let mut rx = Binance::new()
-//!     .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, Some(10))
+//!     .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], 10, 5000)
 //!     .await?;
 //!
 //! while let Some(update) = rx.recv().await {
@@ -50,5 +50,8 @@ pub use common::{
     effective_price_with_overrides, fee_rate, fee_rate_with_overrides, taker_fee_rate,
     taker_fee_rate_with_overrides,
 };
-pub use dex::KyberSwap;
+pub use dex::{
+    KyberSwap, ListenMode, PoolKind, PriceDirection, PoolListenerConfig, PoolPriceUpdate,
+    load_dotenv, stream_pool_prices,
+};
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};

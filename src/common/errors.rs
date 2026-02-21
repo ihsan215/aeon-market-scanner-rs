@@ -14,4 +14,7 @@ pub enum MarketScannerError {
 
     #[error("Invalid symbol: {0}")]
     InvalidSymbol(String),
+
+    #[error("WebSocket / RPC error: {0}")]
+    WsRpcError(String),
 }

@@ -9,7 +9,7 @@ async fn binance_ws_stream_multi_symbol() {
 
     let exchange = Binance::new();
     let mut rx = exchange
-        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, None)
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], 5, 5000)
         .await
         .expect("WebSocket stream");
 

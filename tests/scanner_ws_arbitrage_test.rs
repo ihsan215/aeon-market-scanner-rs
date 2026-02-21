@@ -25,8 +25,8 @@ async fn scan_arbitrage_from_websockets_basic() {
             CexExchange::Bitget,
         ],
         Some(&fee_overrides),
-        true,
-        Some(5),
+        5,    // reconnect_attempts (1 initial + 5 retries)
+        5000, // reconnect_delay_ms
     )
     .await
     .expect("scan_arbitrage_from_websockets");

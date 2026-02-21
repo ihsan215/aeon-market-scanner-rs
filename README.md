@@ -3,7 +3,8 @@
 A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opportunities**.
 
 - REST price fetching (`get_price`)
-- Streaming WebSocket price feeds (`stream_price_websocket`) with reconnect + exponential backoff
+- CEX WebSocket streams (`stream_price_websocket`) with configurable reconnect (attempts + delay in ms)
+- **DEX pool price listener**: Uniswap V2/V3 pool prices over WebSocket RPC (`stream_pool_prices`)
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets`)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
 
@@ -14,28 +15,29 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 ### CEX (centralized exchanges)
 
-| Exchange | REST (`get_price`) | WebSocket (`supports_websocket()`) |
-|---|---:|---:|
-| Binance | supported | supported |
-| Bybit | supported | supported |
-| MEXC | supported | supported |
-| OKX | supported | supported |
-| Gateio | supported | supported |
-| KuCoin | supported | supported |
-| Bitget | supported | supported |
-| Coinbase | supported | supported |
-| Kraken | supported | supported |
-| Bitfinex | supported | supported |
-| Upbit | supported | supported |
-| Crypto.com | supported | supported |
-| BtcTurk | supported | not supported |
-| HTX | supported | not supported |
+| Exchange   | REST (`get_price`) | WebSocket (`supports_websocket()`) |
+| ---------- | -----------------: | ---------------------------------: |
+| Binance    |          supported |                          supported |
+| Bybit      |          supported |                          supported |
+| MEXC       |          supported |                          supported |
+| OKX        |          supported |                          supported |
+| Gateio     |          supported |                          supported |
+| KuCoin     |          supported |                          supported |
+| Bitget     |          supported |                          supported |
+| Coinbase   |          supported |                          supported |
+| Kraken     |          supported |                          supported |
+| Bitfinex   |          supported |                          supported |
+| Upbit      |          supported |                          supported |
+| Crypto.com |          supported |                          supported |
+| BtcTurk    |          supported |                      not supported |
+| HTX        |          supported |                      not supported |
 
-### DEX (decentralized aggregators)
+### DEX
 
-| Aggregator | REST | WebSocket | Supported chains |
-|---|---:|---:|---|
-| KyberSwap | supported | not supported | `ethereum`, `bsc`, `polygon`, `avalanche`, `arbitrum`, `optimism`, `base`, `linea`, `mantle`, `plasma`, `unichain`, `sonic`, `ronin`, `hyprevm` |
+| Component             |      REST |     WebSocket | Notes                                                                                                                                                               |
+| --------------------- | --------: | ------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| KyberSwap             | supported | not supported | Aggregator; chains: `ethereum`, `bsc`, `polygon`, `avalanche`, `arbitrum`, `optimism`, `base`, `linea`, `mantle`, `plasma`, `unichain`, `sonic`, `ronin`, `hyprevm` |
+| Pool listener (V2/V3) |       n/a |     supported | Single-pool price stream over your WebSocket RPC; any EVM chain                                                                                                     |
 
 ## Installation
 
@@ -43,14 +45,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.3"
+aeon-market-scanner-rs = "0.4"
 tokio = { version = "1", features = ["full"] }
 ```
 
-Or pin the latest patch:
+Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.3.1"
+aeon-market-scanner-rs = "0.4.0"
 ```
 
 Then run `cargo build`.
@@ -73,16 +75,16 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 }
 ```
 
-## Stream prices via WebSocket (with reconnect + max attempts)
+## Stream CEX prices via WebSocket (with reconnect)
 
 All WebSocket-enabled CEX implementations expose:
 
 ```text
-stream_price_websocket(symbols, reconnect, max_attempts)
+stream_price_websocket(symbols, reconnect_attempts, reconnect_delay_ms)
 ```
 
-- `reconnect`: if `true`, automatically reconnect on disconnect/failure with exponential backoff
-- `max_attempts`: if `Some(n)`, stop after **n consecutive failed connection attempts**
+- `reconnect_attempts`: `0` = no reconnect; `n` = up to n reconnects (1 initial run + n retries)
+- `reconnect_delay_ms`: milliseconds to wait before each reconnect (0 is treated as 1000)
 
 Example:
 
@@ -99,7 +101,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     }
 
     let mut rx = exchange
-        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], true, Some(10))
+        .stream_price_websocket(&["BTCUSDT", "ETHUSDT"], 10, 5000)
         .await?;
 
     while let Some(update) = rx.recv().await {
@@ -112,6 +114,47 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     Ok(())
 }
 ```
+
+## DEX pool price listener (Uniswap V2 / V3)
+
+Stream live prices from a single Uniswap V2 or V3 style pool over WebSocket RPC. Useful for on-chain price feeds without polling.
+
+```rust,no_run
+use aeon_market_scanner_rs::{
+    stream_pool_prices, load_dotenv,
+    ListenMode, PoolKind, PoolListenerConfig, PriceDirection,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    load_dotenv();
+    let rpc_ws = std::env::var("POOL_LISTENER_RPC_WS").expect("POOL_LISTENER_RPC_WS");
+
+    let config = PoolListenerConfig {
+        rpc_ws_url: rpc_ws,
+        chain_id: 56,
+        pool_address: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE".to_string(),
+        pool_kind: PoolKind::V2,
+        listen_mode: ListenMode::EveryBlock,
+        price_direction: PriceDirection::Token1PerToken0,
+        symbol: Some("BNBUSDT".to_string()),
+        reconnect_attempts: 3,
+        reconnect_delay_ms: 5000,
+    };
+
+    let mut rx = stream_pool_prices(config).await?;
+    while let Some(update) = rx.recv().await {
+        println!("price={} block={} reserve0={:?} reserve1={:?}",
+            update.price, update.block_number, update.reserve0, update.reserve1);
+    }
+    Ok(())
+}
+```
+
+- **ListenMode**: `EveryBlock` (emit on each new block from RPC) or `OnSwapEvent` (only when the pool emits a Swap).
+- **PriceDirection**: `Token1PerToken0` (e.g. USDT per BNB) or `Token0PerToken1`.
+- **Reconnect**: `reconnect_attempts` = 0 to disable; n = up to n reconnects. `reconnect_delay_ms` = delay between attempts (0 → 1000 ms).
+- V2 pools expose `reserve0` / `reserve1`; V3 pools expose `sqrt_price_x96`.
 
 ## Scan arbitrage opportunities (CEX-only)
 
@@ -212,8 +255,8 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
         &["BTCUSDT", "ETHUSDT"],
         &[CexExchange::Binance, CexExchange::OKX, CexExchange::Bybit],
         None,
-        true,
-        Some(10),
+        10,   // reconnect_attempts
+        5000, // reconnect_delay_ms
     )
     .await?;
 
@@ -285,9 +328,9 @@ println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
 - **Public APIs**: this crate uses exchanges' **public REST and (where available) public WebSocket** market data endpoints. No API keys are required for the features in this crate. Usage is still subject to each provider’s rate limits and terms.
 - **Network + rate limits**: exchange APIs can rate-limit or temporarily fail; callers should expect errors.
 - **Symbols**: most examples use common `BASEQUOTE` format like `BTCUSDT`. Some exchanges may require different formatting internally; the crate normalizes per-exchange.
-- **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if enabled).
+- **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if `reconnect_attempts` > 0).
+- **Pool listener**: requires a WebSocket RPC URL (e.g. from Alchemy, Infura, or a chain node). Block delivery depends on the RPC; block numbers may not be consecutive.
 
 ## License
 
 Licensed under the **Apache License, Version 2.0**. See `LICENSE`.
-
