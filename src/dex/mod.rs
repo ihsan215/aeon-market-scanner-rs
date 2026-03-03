@@ -4,8 +4,9 @@ pub mod kyberswap;
 pub mod pool_listener;
 
 // re-exports
+pub use chains::{ChainId, Token};
 pub use kyberswap::KyberSwap;
 pub use pool_listener::{
-    ListenMode, PoolKind, PoolListenerConfig, PoolPriceUpdate, PriceDirection, load_dotenv,
-    stream_pool_prices,
+    load_dotenv, stream_pool_prices, PoolKind, PoolListenerConfig, PoolPriceUpdate, PoolWithTokens,
+    PriceDirection,
 };

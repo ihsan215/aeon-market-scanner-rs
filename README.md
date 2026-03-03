@@ -4,7 +4,7 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 - REST price fetching (`get_price`)
 - CEX WebSocket streams (`stream_price_websocket`) with configurable reconnect (attempts + delay in ms)
-- **DEX pool price listener**: Uniswap V2/V3 pool prices over WebSocket RPC (`stream_pool_prices`)
+- **DEX pool price listener**: Uniswap V2, V3, V4 and PancakeSwap Infinity (V4-style) pool prices over WebSocket RPC (`stream_pool_prices`); swap-event only, price from event params
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets`)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
 
@@ -34,10 +34,10 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 ### DEX
 
-| Component             |      REST |     WebSocket | Notes                                                                                                                                                               |
-| --------------------- | --------: | ------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| KyberSwap             | supported | not supported | Aggregator; chains: `ethereum`, `bsc`, `polygon`, `avalanche`, `arbitrum`, `optimism`, `base`, `linea`, `mantle`, `plasma`, `unichain`, `sonic`, `ronin`, `hyprevm` |
-| Pool listener (V2/V3) |       n/a |     supported | Single-pool price stream over your WebSocket RPC; any EVM chain                                                                                                     |
+| Component                |      REST |     WebSocket | Notes                                                                                                                                                               |
+| ------------------------ | --------: | ------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| KyberSwap                | supported | not supported | Aggregator; chains: `ethereum`, `bsc`, `polygon`, `avalanche`, `arbitrum`, `optimism`, `base`, `linea`, `mantle`, `plasma`, `unichain`, `sonic`, `ronin`, `hyprevm` |
+| Pool listener (V2/V3/V4) |       n/a |     supported | Single-pool swap-event stream over WebSocket RPC; V2/V3 (pool address), V4/V4Pancake (PoolManager + pool id); any EVM chain                                         |
 
 ## Installation
 
@@ -45,14 +45,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.4"
+aeon-market-scanner-rs = "0.5"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.4.0"
+aeon-market-scanner-rs = "0.5.0"
 ```
 
 Then run `cargo build`.
@@ -115,14 +115,17 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 }
 ```
 
-## DEX pool price listener (Uniswap V2 / V3)
+## DEX pool price listener (Uniswap V2 / V3 / V4, PancakeSwap Infinity)
 
-Stream live prices from a single Uniswap V2 or V3 style pool over WebSocket RPC. Useful for on-chain price feeds without polling.
+Stream live prices from a single pool over WebSocket RPC. Listens only to **Swap** events (`eth_subscribe("logs")`); price is computed from swap event parameters. No block subscription or separate RPC for reads; decimals and symbol come from the `PoolWithTokens` you pass.
+
+**Pool kinds:** `V2`, `V3`, `V4` (Uniswap V4), `V4Pancake` (PancakeSwap Infinity). For V4 and V4Pancake you must set `pool_id` (bytes32 from the chain); `pool_address` is the PoolManager contract address.
 
 ```rust,no_run
 use aeon_market_scanner_rs::{
     stream_pool_prices, load_dotenv,
-    ListenMode, PoolKind, PoolListenerConfig, PriceDirection,
+    PoolKind, PoolListenerConfig, PoolWithTokens, PriceDirection, Token,
+    dex::chains::ChainId,
 };
 
 #[tokio::main]
@@ -130,31 +133,37 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     load_dotenv();
     let rpc_ws = std::env::var("POOL_LISTENER_RPC_WS").expect("POOL_LISTENER_RPC_WS");
 
+    let token0 = Token::create("0x...", "BNB", "BNB", 18, ChainId::BSC);
+    let token1 = Token::create("0x...", "USDT", "USDT", 18, ChainId::BSC);
+    let pool = PoolWithTokens {
+        pool_address: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE".to_string(),
+        pool_kind: PoolKind::V2,
+        pool_id: None, // required for V4 / V4Pancake
+        token0,
+        token1,
+        price_direction: PriceDirection::Token0PerToken1,
+    };
+
     let config = PoolListenerConfig {
         rpc_ws_url: rpc_ws,
         chain_id: 56,
-        pool_address: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE".to_string(),
-        pool_kind: PoolKind::V2,
-        listen_mode: ListenMode::EveryBlock,
-        price_direction: PriceDirection::Token1PerToken0,
-        symbol: Some("BNBUSDT".to_string()),
+        pool,
         reconnect_attempts: 3,
         reconnect_delay_ms: 5000,
     };
 
     let mut rx = stream_pool_prices(config).await?;
     while let Some(update) = rx.recv().await {
-        println!("price={} block={} reserve0={:?} reserve1={:?}",
-            update.price, update.block_number, update.reserve0, update.reserve1);
+        println!("price={} block={} symbol={:?}", update.price, update.block_number, update.symbol);
     }
     Ok(())
 }
 ```
 
-- **ListenMode**: `EveryBlock` (emit on each new block from RPC) or `OnSwapEvent` (only when the pool emits a Swap).
-- **PriceDirection**: `Token1PerToken0` (e.g. USDT per BNB) or `Token0PerToken1`.
-- **Reconnect**: `reconnect_attempts` = 0 to disable; n = up to n reconnects. `reconnect_delay_ms` = delay between attempts (0 → 1000 ms).
-- V2 pools expose `reserve0` / `reserve1`; V3 pools expose `sqrt_price_x96`.
+- **PoolWithTokens**: `pool_address`, `pool_kind`, optional `pool_id` (for V4/V4Pancake), `token0`, `token1`, `price_direction`. Decimals and symbol are taken from the tokens.
+- **PriceDirection**: `Token1PerToken0` or `Token0PerToken1`.
+- **Reconnect**: `reconnect_attempts` = 0 to disable; n = up to n reconnects. `reconnect_delay_ms` = delay in ms.
+- V2/V3: `pool_address` = pair/pool contract. V4/V4Pancake: `pool_address` = PoolManager, `pool_id` = topic1 from chain explorer.
 
 ## Scan arbitrage opportunities (CEX-only)
 

@@ -1,14 +1,14 @@
-//! DEX pool listener V3 test.
+//! DEX pool listener V3 test (swap-event only).
 //!
-//! Set only RPC via env, then run:
+//! Set RPC via env, then run:
 //!
 //!   POOL_LISTENER_RPC_WS=wss://... cargo test pool_listener_v3 -- --nocapture
 //!
 //! Pool address and chain are fixed in this file (edit if needed).
 
 use aeon_market_scanner_rs::{
-    ListenMode, PoolKind, PoolListenerConfig, PoolPriceUpdate, PriceDirection, load_dotenv,
-    stream_pool_prices,
+    ChainId, PoolKind, PoolListenerConfig, PoolPriceUpdate, PoolWithTokens, PriceDirection, Token,
+    load_dotenv, stream_pool_prices,
 };
 
 fn print_update(n: u32, u: &PoolPriceUpdate) {
@@ -30,17 +30,36 @@ fn rpc_ws() -> Option<String> {
     Some(s)
 }
 
-async fn run_listener(listen_mode: ListenMode, timeout_secs: u64) -> Option<u32> {
+async fn run_listener(timeout_secs: u64) -> Option<u32> {
     let rpc_ws = rpc_ws()?;
+
+    let token0 = Token::create(
+        "0x0000000000000000000000000000000000000000",
+        "USDT",
+        "USDT",
+        18,
+        ChainId::BSC,
+    );
+    let token1 = Token::create(
+        "0x0000000000000000000000000000000000000000",
+        "BNB",
+        "BNB",
+        18,
+        ChainId::BSC,
+    );
+    let pool = PoolWithTokens {
+        pool_address: POOL_ADDRESS.to_string(),
+        pool_kind: PoolKind::V3,
+        pool_id: None,
+        token0,
+        token1,
+        price_direction: PriceDirection::Token0PerToken1,
+    };
 
     let config = PoolListenerConfig {
         rpc_ws_url: rpc_ws.clone(),
         chain_id: CHAIN_ID,
-        pool_address: POOL_ADDRESS.to_string(),
-        pool_kind: PoolKind::V3,
-        listen_mode,
-        price_direction: PriceDirection::Token0PerToken1,
-        symbol: Some("BNBUSDT".to_string()),
+        pool,
         reconnect_attempts: 0,
         reconnect_delay_ms: 5000,
     };
@@ -56,7 +75,7 @@ async fn run_listener(listen_mode: ListenMode, timeout_secs: u64) -> Option<u32>
         while let Some(update) = rx.recv().await {
             count += 1;
             print_update(count, &update);
-            if count >= 5 {
+            if count >= 5000 {
                 break;
             }
         }
@@ -72,28 +91,13 @@ async fn run_listener(listen_mode: ListenMode, timeout_secs: u64) -> Option<u32>
 
 #[tokio::test]
 async fn pool_listener_v3_on_swap_event() {
-    println!("\n=== Pool listener V3 — OnSwapEvent ===\n");
-    let Some(count) = run_listener(ListenMode::OnSwapEvent, 45).await else {
+    println!("\n=== Pool listener V3 — Swap events only ===\n");
+    let Some(count) = run_listener(45).await else {
         println!("Skipping: set POOL_LISTENER_RPC_WS");
         return;
     };
     println!("\nTotal updates: {}", count);
     if count == 0 {
-        println!("OnSwapEvent: no swap in pool during timeout (normal for quiet pools)");
+        println!("No swap in pool during timeout (normal for quiet pools)");
     }
-}
-
-#[tokio::test]
-async fn pool_listener_v3_every_block() {
-    println!("\n=== Pool listener V3 — EveryBlock ===\n");
-    let Some(count) = run_listener(ListenMode::EveryBlock, 30).await else {
-        println!("Skipping: set POOL_LISTENER_RPC_WS");
-        return;
-    };
-    println!("\nTotal updates: {}", count);
-    assert!(
-        count >= 1,
-        "EveryBlock should yield at least one update; got {}",
-        count
-    );
 }

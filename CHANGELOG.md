@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-03
+
+### Added
+
+- **DEX pool listener**: Uniswap V4 (`PoolKind::V4`) and PancakeSwap Infinity (`PoolKind::V4Pancake`) support. V4-style pools use PoolManager address + `pool_id` (bytes32); price from swap event data.
+- **PoolWithTokens**: pool config struct with `pool_address`, `pool_kind`, optional `pool_id` (for V4/V4Pancake), `token0`, `token1`, `price_direction`. Decimals and symbol come from tokens; no on-chain decimals fetch.
+
+### Changed
+
+- **DEX pool listener (breaking)**: Swap-event only. No block subscription or `ListenMode`; no `symbol` or `public_rpc_urls`. `PoolListenerConfig` now takes a single `pool: PoolWithTokens` instead of `pool_address`, `pool_kind`, `listen_mode`, `symbol`, `public_rpc_urls`. Price is computed only from swap log parameters (V2: amount0/1 in/out; V3/V4: sqrtPriceX96). V3/V4 amounts use `I256` and safe `sqrtPriceX96` handling to avoid overflows.
+
+### Removed
+
+- **DEX pool listener**: `ListenMode`, `symbol`, from config. Block-based listening and read-only RPC fallback removed.
+
 ## [0.4.0] - 2026-02-06
 
 ### Added
