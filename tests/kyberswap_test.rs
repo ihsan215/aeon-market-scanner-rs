@@ -1,7 +1,7 @@
 mod scanner_common;
 
 use aeon_market_scanner_rs::{
-    DEXTrait, DexAggregator, DexRouteSummary, Exchange, ExchangeTrait, KyberSwap,
+    AggregatorRouteSummary, DEXTrait, DexAggregator, Exchange, ExchangeTrait, KyberSwap,
 };
 use scanner_common::{
     create_base_eth, create_base_usdc, create_bsc_bnb, create_bsc_usdt, create_eth_eth,
@@ -14,7 +14,7 @@ const QUOTE_AMOUNT: f64 = 1000.0;
 /// For best effect run with: cargo test kyberswap -- --test-threads=1
 const DELAY_BETWEEN_TESTS: Duration = Duration::from_secs(2);
 
-fn print_route_summary(label: &str, route: &DexRouteSummary) {
+fn print_route_summary(label: &str, route: &AggregatorRouteSummary) {
     println!("\n=== {} Route Summary ===", label);
     println!(
         "Token In: {}, Token Out: {}",

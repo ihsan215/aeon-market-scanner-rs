@@ -5,7 +5,7 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 - REST price fetching (`get_price`)
 - CEX WebSocket streams (`stream_price_websocket`) with configurable reconnect (attempts + delay in ms)
 - **DEX pool price listener**: Uniswap V2, V3, V4 and PancakeSwap Infinity (V4-style) pool prices over WebSocket RPC (`stream_pool_prices`); swap-event only, price from event params
-- Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets`)
+- Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets` with `ScannerEvent` stream)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
 
 > **Crate:** [crates.io/crates/aeon-market-scanner-rs](https://crates.io/crates/aeon-market-scanner-rs) · **Docs:** [docs.rs/aeon-market-scanner-rs](https://docs.rs/aeon-market-scanner-rs)  
@@ -117,20 +117,20 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 
 ## DEX pool price listener (Uniswap V2 / V3 / V4, PancakeSwap Infinity)
 
-Stream live prices from a single pool over WebSocket RPC. Listens only to **Swap** events (`eth_subscribe("logs")`); price is computed from swap event parameters. No block subscription or separate RPC for reads; decimals and symbol come from the `PoolWithTokens` you pass.
+Stream live prices from multiple pools over a single WebSocket connection. Listens only to **Swap** events (`eth_subscribe("logs")`); price is computed from swap event parameters. No block subscription or separate RPC for reads; decimals and symbol come from the `PoolWithTokens` you pass.
 
 **Pool kinds:** `V2`, `V3`, `V4` (Uniswap V4), `V4Pancake` (PancakeSwap Infinity). For V4 and V4Pancake you must set `pool_id` (bytes32 from the chain); `pool_address` is the PoolManager contract address.
 
 ```rust,no_run
 use aeon_market_scanner_rs::{
-    stream_pool_prices, load_dotenv,
-    PoolKind, PoolListenerConfig, PoolWithTokens, PriceDirection, Token,
+    stream_pool_prices,
+    PoolKind, PoolWithTokens, PriceDirection, Token,
     dex::chains::ChainId,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
-    load_dotenv();
+    let _ = dotenvy::dotenv(); // or load .env in tests; add dotenvy to your Cargo.toml if needed
     let rpc_ws = std::env::var("POOL_LISTENER_RPC_WS").expect("POOL_LISTENER_RPC_WS");
 
     let token0 = Token::create("0x...", "BNB", "BNB", 18, ChainId::BSC);
@@ -144,15 +144,10 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
         price_direction: PriceDirection::Token0PerToken1,
     };
 
-    let config = PoolListenerConfig {
-        rpc_ws_url: rpc_ws,
-        chain_id: 56,
-        pool,
-        reconnect_attempts: 3,
-        reconnect_delay_ms: 5000,
-    };
-
-    let mut rx = stream_pool_prices(config).await?;
+    // You can pass multiple pools here!
+    let pools = vec![pool];
+    
+    let mut rx = stream_pool_prices(rpc_ws, 56, pools, 3, 5000).await?;
     while let Some(update) = rx.recv().await {
         println!("price={} block={} symbol={:?}", update.price, update.block_number, update.symbol);
     }
@@ -256,7 +251,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 Connect to CEX WebSocket feeds and continuously receive arbitrage opportunity snapshots:
 
 ```rust,no_run
-use aeon_market_scanner_rs::{ArbitrageScanner, CexExchange};
+use aeon_market_scanner_rs::{ArbitrageScanner, CexExchange, ScannerEvent};
 
 #[tokio::main]
 async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
@@ -264,18 +259,31 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
         &["BTCUSDT", "ETHUSDT"],
         &[CexExchange::Binance, CexExchange::OKX, CexExchange::Bybit],
         None,
+        None, // No DEX streams in this example
+        None, // No DEX RPC WS URL
+        None, // No chain ID for DEX
         10,   // reconnect_attempts
         5000, // reconnect_delay_ms
     )
     .await?;
 
-    while let Some(opps) = rx.recv().await {
-        for o in opps.iter().take(5) {
-            println!(
-                "{} -> {} {} spread={:.4} ({:.3}%)",
-                o.source_exchange, o.destination_exchange, o.symbol,
-                o.spread, o.spread_percentage
-            );
+    while let Some(event) = rx.recv().await {
+        match event {
+            ScannerEvent::Opportunity(opps) => {
+                for o in opps.iter().take(5) {
+                    println!(
+                        "{} -> {} {} spread={:.4} ({:.3}%)",
+                        o.source_exchange, o.destination_exchange, o.symbol,
+                        o.spread, o.spread_percentage
+                    );
+                }
+            }
+            ScannerEvent::Tick => {
+                // Heartbeat / snapshot marker
+            }
+            ScannerEvent::Price(price) => {
+                // Individual price update (useful if you want to log raw stream events)
+            }
         }
     }
 
@@ -283,7 +291,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 }
 ```
 
-Exchanges that do not support WebSocket are skipped. The receiver emits opportunity snapshots (sorted by profitability) whenever new prices arrive.
+Exchanges that do not support WebSocket are skipped. The receiver emits `ScannerEvent::Opportunity` (sorted by profitability) whenever a snapshot evaluation completes, `ScannerEvent::Tick` for heartbeats, and `ScannerEvent::Price` for individual price updates.
 
 ## Fees / commissions
 

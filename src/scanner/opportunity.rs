@@ -1,14 +1,17 @@
-use crate::common::{CexPrice, DexPrice};
+use crate::common::{AggregatorPrice, CexPrice};
+use crate::dex::DexPrice as PoolListenerPrice;
 use serde::{Deserialize, Serialize};
 
-/// Price data enum - can contain either CEX or DEX price data
+/// Price data enum - can contain CEX, DEX aggregator, or pool listener price data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum PriceData {
     /// CEX price data
     Cex(CexPrice),
-    /// DEX price data
-    Dex(DexPrice),
+    /// DEX aggregator price data
+    Dex(AggregatorPrice),
+    /// Pool listener price (from stream_pool_prices)
+    PoolListener(PoolListenerPrice),
 }
 
 /// Arbitrage opportunity: buy from one exchange (source), sell on another (destination).
@@ -26,18 +29,26 @@ pub struct ArbitrageOpportunity {
     pub destination_exchange: String,
     /// Trading pair symbol (e.g. "BTCUSDT")
     pub symbol: String,
+    /// Raw ask price (without fees)
+    pub ask: f64,
+    /// Raw bid price (without fees)
+    pub bid: f64,
     /// Effective cost to acquire (ask × (1 + fee))
     #[serde(alias = "buy_price")]
     pub effective_ask: f64,
     /// Effective proceeds when disposing (bid × (1 − fee))
     #[serde(alias = "sell_price")]
     pub effective_bid: f64,
+    /// Arbitrage spread per unit (bid − ask), gross of fees
+    pub spread: f64,
+    /// Spread as percentage ((spread / ask) × 100), gross of fees
+    pub spread_percentage: f64,
     /// Arbitrage spread per unit (effective_bid − effective_ask), net of fees
     #[serde(alias = "profit")]
-    pub spread: f64,
-    /// Spread as percentage ((spread / effective_ask) × 100), net of fees
+    pub net_spread: f64,
+    /// Net spread as percentage ((net_spread / effective_ask) × 100), net of fees
     #[serde(alias = "profit_percentage")]
-    pub spread_percentage: f64,
+    pub net_spread_percentage: f64,
     /// Maximum executable quantity (min of available depth on both legs)
     #[serde(alias = "buy_quantity", alias = "sell_quantity")]
     pub executable_quantity: f64,
@@ -58,6 +69,6 @@ pub struct ArbitrageOpportunity {
 impl ArbitrageOpportunity {
     /// Total profit in quote currency (spread × executable quantity)
     pub fn total_profit(&self) -> f64 {
-        self.spread * self.executable_quantity
+        self.net_spread * self.executable_quantity
     }
 }

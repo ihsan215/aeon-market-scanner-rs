@@ -5,15 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-03-03
+## [0.5.0] - 2026-03-09
 
 ### Added
 
+- **Multi-pool listener**: `stream_pool_prices` now accepts a `Vec<PoolWithTokens>` to stream multiple pools over a single WebSocket connection.
+- **ScannerEvent Stream**: Scanner methods like `scan_arbitrage_from_websockets` now yield a `ScannerEvent` stream (`Tick`, `Price`, `Opportunity`).
+- **DEX/CEX Arbitrage**: The scanner now fully supports live arbitrage scanning between CEXs and WebSocket-streamed DEX pools.
+- **Modularity**: Separated `OpportunityFinder` logic into `opportunity.rs`.
 - **DEX pool listener**: Uniswap V4 (`PoolKind::V4`) and PancakeSwap Infinity (`PoolKind::V4Pancake`) support. V4-style pools use PoolManager address + `pool_id` (bytes32); price from swap event data.
 - **PoolWithTokens**: pool config struct with `pool_address`, `pool_kind`, optional `pool_id` (for V4/V4Pancake), `token0`, `token1`, `price_direction`. Decimals and symbol come from tokens; no on-chain decimals fetch.
 
 ### Changed
 
+- **Breaking**: `DexPrice` has been renamed to `AggregatorPrice` and `DexRouteSummary` to `AggregatorRouteSummary` for REST aggregator requests (e.g. KyberSwap).
+- **Breaking**: The `DexPrice` struct is now used to represent price updates originating from the live DEX pool WebSocket stream.
+- **Breaking**: `stream_pool_prices` signature changed from taking a single `PoolListenerConfig` to taking `(rpc_ws_url, chain_id, pools: Vec<PoolWithTokens>, reconnect_attempts, reconnect_delay_ms)`.
+- `dotenvy` is now included as a dependency for easier environment variable loading.
 - **DEX pool listener (breaking)**: Swap-event only. No block subscription or `ListenMode`; no `symbol` or `public_rpc_urls`. `PoolListenerConfig` now takes a single `pool: PoolWithTokens` instead of `pool_address`, `pool_kind`, `listen_mode`, `symbol`, `public_rpc_urls`. Price is computed only from swap log parameters (V2: amount0/1 in/out; V3/V4: sqrtPriceX96). V3/V4 amounts use `I256` and safe `sqrtPriceX96` handling to avoid overflows.
 
 ### Removed
@@ -48,7 +56,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Fee override support via `FeeOverrides` (VIP/custom tiers) for arbitrage calculations.
-- Public helper `ArbitrageScanner::opportunities_from_prices(...)` for deterministic/offline opportunity evaluation.
+- Public `ArbitrageScanner::find_opportunities(...)` for deterministic/offline opportunity evaluation.
 - Additional public re-exports for fee helpers at crate root (e.g. `FeeOverrides`, `fee_rate`, `taker_fee_rate`).
 
 ### Changed

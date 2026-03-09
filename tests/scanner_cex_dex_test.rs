@@ -114,6 +114,13 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
                     println!("    Ask Route Data: Available (JSON)");
                 }
             }
+            PriceData::PoolListener(p) => {
+                println!("    Type: Pool");
+                println!("    Chain ID: {}", p.chain_id);
+                println!("    Pool Address: {}", p.pool_address);
+                println!("    Price: ${:.4}", p.price);
+                println!("    Symbol: {}", p.symbol.as_deref().unwrap_or("—"));
+            }
         }
         println!("  Destination Leg:");
         match &opp.destination_leg {
@@ -150,6 +157,13 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
                 if dex_price.bid_route_data.is_some() {
                     println!("    Bid Route Data: Available (JSON)");
                 }
+            }
+            PriceData::PoolListener(p) => {
+                println!("    Type: Pool");
+                println!("    Chain ID: {}", p.chain_id);
+                println!("    Pool Address: {}", p.pool_address);
+                println!("    Price: ${:.4}", p.price);
+                println!("    Symbol: {}", p.symbol.as_deref().unwrap_or("—"));
             }
         }
         println!();
@@ -206,13 +220,16 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
                     );
                 }
             }
+            (PriceData::PoolListener(_), _) | (_, PriceData::PoolListener(_)) => {
+                // Pool listener not used in this CEX+DEX test
+            }
         }
 
-        // Verify sorting (most profitable first)
+        // Verify sorting (most profitable first based on net spread percentage)
         if i < opportunities.len() - 1 {
             assert!(
-                opp.spread_percentage >= opportunities[i + 1].spread_percentage,
-                "Opportunities should be sorted by spread percentage (descending)"
+                opp.net_spread_percentage >= opportunities[i + 1].net_spread_percentage,
+                "Opportunities should be sorted by net spread percentage (descending)"
             );
         }
     }
@@ -235,6 +252,7 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
                 (PriceData::Cex(_), PriceData::Dex(_)) => "CEX-DEX",
                 (PriceData::Dex(_), PriceData::Cex(_)) => "DEX-CEX",
                 (PriceData::Dex(_), PriceData::Dex(_)) => "DEX-DEX",
+                (PriceData::PoolListener(_), _) | (_, PriceData::PoolListener(_)) => "Pool",
             };
             println!(
                 "  #{}: {} -> {} | Profit: {:.4}% | ${:.4} | Type: {}",

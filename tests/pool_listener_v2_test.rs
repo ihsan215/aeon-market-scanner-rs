@@ -7,11 +7,10 @@
 //! Pool address and chain are fixed in this file (edit if needed).
 
 use aeon_market_scanner_rs::{
-    ChainId, PoolKind, PoolListenerConfig, PoolPriceUpdate, PoolWithTokens, PriceDirection, Token,
-    load_dotenv, stream_pool_prices,
+    ChainId, DexPrice, PoolKind, PoolWithTokens, PriceDirection, Token, stream_pool_prices,
 };
 
-fn print_update(n: u32, u: &PoolPriceUpdate) {
+fn print_update(n: u32, u: &DexPrice) {
     println!(
         "Update #{}: price={} direction={:?} | block={} ts={} | symbol={:?}",
         n, u.price, u.direction, u.block_number, u.timestamp, u.symbol
@@ -22,7 +21,7 @@ const CHAIN_ID: u64 = 56;
 const POOL_ADDRESS: &str = "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE"; // PancakeSwap V2 BNB/USDT on BNB chain
 
 fn rpc_ws() -> Option<String> {
-    load_dotenv();
+    let _ = dotenvy::dotenv();
     let s = std::env::var("POOL_LISTENER_RPC_WS").ok()?;
     if s.is_empty() {
         return None;
@@ -56,15 +55,7 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
         price_direction: PriceDirection::Token0PerToken1,
     };
 
-    let config = PoolListenerConfig {
-        rpc_ws_url: rpc_ws.clone(),
-        chain_id: CHAIN_ID,
-        pool,
-        reconnect_attempts: 0,
-        reconnect_delay_ms: 5000,
-    };
-
-    let mut rx = stream_pool_prices(config)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000)
         .await
         .expect("stream_pool_prices");
 

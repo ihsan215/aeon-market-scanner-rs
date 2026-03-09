@@ -75,6 +75,7 @@ async fn test_scan_cex_arbitrage_ethusdt() {
                 println!("    Ask Quantity: {:.4}", cex_price.ask_qty);
             }
             PriceData::Dex(_) => {}
+            PriceData::PoolListener(_) => {}
         }
         println!("  Destination Leg:");
         match &opp.destination_leg {
@@ -89,6 +90,7 @@ async fn test_scan_cex_arbitrage_ethusdt() {
                 println!("    Ask Quantity: {:.4}", cex_price.ask_qty);
             }
             PriceData::Dex(_) => {}
+            PriceData::PoolListener(_) => {}
         }
         println!();
 
@@ -119,6 +121,9 @@ async fn test_scan_cex_arbitrage_ethusdt() {
             PriceData::Dex(_) => {
                 panic!("Source leg should be CEX for CEX-only scan");
             }
+            PriceData::PoolListener(_) => {
+                panic!("Source leg should be CEX for CEX-only scan");
+            }
         }
 
         match &opp.destination_leg {
@@ -134,17 +139,20 @@ async fn test_scan_cex_arbitrage_ethusdt() {
             PriceData::Dex(_) => {
                 panic!("Destination leg should be CEX for CEX-only scan");
             }
+            PriceData::PoolListener(_) => {
+                panic!("Destination leg should be CEX for CEX-only scan");
+            }
         }
 
-        // Verify sorting (each opportunity should have profit_percentage >= next one)
+        // Verify sorting (each opportunity should have net_spread_percentage >= next one)
         if i < opportunities.len() - 1 {
             assert!(
-                opp.spread_percentage >= opportunities[i + 1].spread_percentage,
-                "Opportunities should be sorted by spread percentage (descending) - Opportunity #{} has {:.4}% but #{} has {:.4}%",
+                opp.net_spread_percentage >= opportunities[i + 1].net_spread_percentage,
+                "Opportunities should be sorted by net spread percentage (descending) - Opportunity #{} has {:.4}% but #{} has {:.4}%",
                 i + 1,
-                opp.spread_percentage,
+                opp.net_spread_percentage,
                 i + 2,
-                opportunities[i + 1].spread_percentage
+                opportunities[i + 1].net_spread_percentage
             );
         }
     }

@@ -14,7 +14,7 @@ pub struct CexPrice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DexPrice {
+pub struct AggregatorPrice {
     pub symbol: String,
     pub mid_price: f64,
     pub bid_price: f64,
@@ -24,9 +24,9 @@ pub struct DexPrice {
     pub timestamp: u64,
     pub exchange: Exchange,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bid_route_summary: Option<DexRouteSummary>,
+    pub bid_route_summary: Option<AggregatorRouteSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ask_route_summary: Option<DexRouteSummary>,
+    pub ask_route_summary: Option<AggregatorRouteSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bid_route_data: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,7 +34,7 @@ pub struct DexPrice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DexRouteSummary {
+pub struct AggregatorRouteSummary {
     pub token_in: String,
     pub token_out: String,
     pub amount_in: f64,

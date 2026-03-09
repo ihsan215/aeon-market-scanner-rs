@@ -81,6 +81,7 @@ async fn test_arbitrage_opportunity_structure_ethusdt() {
             );
         }
         PriceData::Dex(_) => {}
+        PriceData::PoolListener(_) => {}
     }
 
     match &opp.destination_leg {
@@ -99,6 +100,7 @@ async fn test_arbitrage_opportunity_structure_ethusdt() {
             );
         }
         PriceData::Dex(_) => {}
+        PriceData::PoolListener(_) => {}
     }
 
     // Test total_profit calculation

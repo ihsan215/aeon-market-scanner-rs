@@ -45,13 +45,13 @@ pub use cex::{
 };
 
 pub use common::{
-    AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait, DexAggregator, DexPrice,
-    DexRouteSummary, Exchange, ExchangeTrait, FeeOverrides, MarketScannerError, effective_price,
+    AggregatorPrice, AggregatorRouteSummary, AmountSide, CEXTrait, CexExchange, CexPrice, DEXTrait,
+    DexAggregator, Exchange, ExchangeTrait, FeeOverrides, MarketScannerError, effective_price,
     effective_price_with_overrides, fee_rate, fee_rate_with_overrides, taker_fee_rate,
     taker_fee_rate_with_overrides,
 };
 pub use dex::{
-    ChainId, KyberSwap, PoolKind, PoolListenerConfig, PoolPriceUpdate, PoolWithTokens,
-    PriceDirection, Token, load_dotenv, stream_pool_prices,
+    ChainId, DexPrice, KyberSwap, PoolKind, PoolListenerConfig, PoolWithTokens,
+    PriceDirection, Token, stream_pool_prices,
 };
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};

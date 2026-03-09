@@ -2,7 +2,7 @@ mod types;
 mod utils;
 
 use crate::common::{
-    DEXTrait, DexAggregator, DexPrice, DexRouteSummary, Exchange, ExchangeTrait,
+    AggregatorPrice, AggregatorRouteSummary, DEXTrait, DexAggregator, Exchange, ExchangeTrait,
     MarketScannerError, find_mid_price, get_timestamp_millis,
 };
 use crate::create_exchange;
@@ -68,7 +68,7 @@ impl DEXTrait for KyberSwap {
         base_token: &crate::dex::chains::Token,
         quote_token: &crate::dex::chains::Token,
         quote_amount: f64,
-    ) -> Result<DexPrice, MarketScannerError> {
+    ) -> Result<AggregatorPrice, MarketScannerError> {
         // Validate that both tokens are on the same chain
         if base_token.chain_id != quote_token.chain_id {
             return Err(MarketScannerError::InvalidSymbol(format!(
@@ -83,7 +83,7 @@ impl DEXTrait for KyberSwap {
         let chain_name = base_token.chain_id.name();
         let api_base = format!("{}/{}/api/v1", KYBERSWAP_API_BASE, chain_name);
 
-        // Create symbol from token symbols (for DexPrice)
+        // Create symbol from token symbols (for AggregatorPrice)
         let normalized = format!("{}{}", base_token.symbol, quote_token.symbol);
 
         // Build client with custom headers to bypass Cloudflare protection
@@ -133,7 +133,7 @@ impl DEXTrait for KyberSwap {
         // Price per 1 base token in  (quote token)
         let bid_price = utils::safe_divide(bid_amount_in_decimal, bid_amount_out_decimal)?;
 
-        let bid_route_summary = DexRouteSummary {
+        let bid_route_summary = AggregatorRouteSummary {
             token_in: bid_data.route_summary.token_in.clone(),
             token_out: bid_data.route_summary.token_out.clone(),
             amount_in: wei_to_eth(&bid_data.route_summary.amount_in, quote_token.decimal)?,
@@ -196,7 +196,7 @@ impl DEXTrait for KyberSwap {
         let ask_price = utils::safe_divide(ask_amount_out_decimal, ask_amount_in_decimal)?;
 
         // Store route summary for ask
-        let ask_route_summary = DexRouteSummary {
+        let ask_route_summary = AggregatorRouteSummary {
             token_in: ask_data.route_summary.token_in.clone(),
             token_out: ask_data.route_summary.token_out.clone(),
             amount_in_wei: ask_data.route_summary.amount_in.clone(),
@@ -221,7 +221,7 @@ impl DEXTrait for KyberSwap {
         let bid_qty = wei_to_eth(&bid_data.route_summary.amount_out, base_token.decimal)?;
         let ask_qty = wei_to_eth(&ask_data.route_summary.amount_in, base_token.decimal)?;
 
-        Ok(DexPrice {
+        Ok(AggregatorPrice {
             symbol: normalized,
             mid_price,
             bid_price: bid_price,

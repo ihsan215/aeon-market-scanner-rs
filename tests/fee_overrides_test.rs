@@ -29,7 +29,7 @@ fn fee_overrides_change_effective_prices_and_commission_percents() {
     };
 
     let base_opps =
-        ArbitrageScanner::opportunities_from_prices(&[buy.clone(), sell.clone()], &[], None);
+        ArbitrageScanner::find_opportunities(&[buy.clone(), sell.clone()], None, None, None);
     let base = base_opps
         .iter()
         .find(|o| o.source_exchange == "Binance" && o.destination_exchange == "OKX")
@@ -47,7 +47,7 @@ fn fee_overrides_change_effective_prices_and_commission_percents() {
         .with_cex_taker_fee(CexExchange::Binance, 0.002)
         .with_cex_taker_fee(CexExchange::OKX, 0.0005);
 
-    let ovr_opps = ArbitrageScanner::opportunities_from_prices(&[buy, sell], &[], Some(&overrides));
+    let ovr_opps = ArbitrageScanner::find_opportunities(&[buy, sell], None, None, Some(&overrides));
     let ovr = ovr_opps
         .iter()
         .find(|o| o.source_exchange == "Binance" && o.destination_exchange == "OKX")

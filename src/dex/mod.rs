@@ -7,6 +7,6 @@ pub mod pool_listener;
 pub use chains::{ChainId, Token};
 pub use kyberswap::KyberSwap;
 pub use pool_listener::{
-    load_dotenv, stream_pool_prices, PoolKind, PoolListenerConfig, PoolPriceUpdate, PoolWithTokens,
+    stream_pool_prices, DexPrice, PoolKind, PoolListenerConfig, PoolWithTokens,
     PriceDirection,
 };
