@@ -1,4 +1,4 @@
-//! DEX pool listener V2 test (swap-event only).
+//! DEX pool listener V2 test (Sync-event only).
 //!
 //! Set RPC via env, then run:
 //!
@@ -12,13 +12,14 @@ use aeon_market_scanner_rs::{
 
 fn print_update(n: u32, u: &DexPrice) {
     println!(
-        "Update #{}: price={} direction={:?} | block={} ts={} | symbol={:?}",
-        n, u.price, u.direction, u.block_number, u.timestamp, u.symbol
+        "Update #{}: bid={} ask={} mid={} direction={:?} | block={} ts={} | symbol={:?}",
+        n, u.bid, u.ask, u.mid, u.direction, u.block_number, u.timestamp, u.symbol
     );
 }
 
-const CHAIN_ID: u64 = 56;
+const CHAIN_ID: ChainId = ChainId::BSC;
 const POOL_ADDRESS: &str = "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE"; // PancakeSwap V2 BNB/USDT on BNB chain
+const POOL_ADDRESS_UNISWAP: &str = "0x8a1Ed8e124fdFBD534bF48baF732E26db9Cc0Cf4"; // Replace with a Uniswap V2 pair address if needed
 
 fn rpc_ws() -> Option<String> {
     let _ = dotenvy::dotenv();
@@ -29,7 +30,12 @@ fn rpc_ws() -> Option<String> {
     Some(s)
 }
 
-async fn run_listener(timeout_secs: u64) -> Option<u32> {
+async fn run_listener(
+    timeout_secs: u64,
+    pool_address: &str,
+    pool_kind: PoolKind,
+    fee_bps: u32,
+) -> Option<u32> {
     let rpc_ws = rpc_ws()?;
 
     let token0 = Token::create(
@@ -47,15 +53,16 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
         ChainId::BSC,
     );
     let pool = PoolWithTokens {
-        pool_address: POOL_ADDRESS.to_string(),
-        pool_kind: PoolKind::V2,
+        pool_address: pool_address.to_string(),
+        pool_kind,
         pool_id: None,
         token0,
         token1,
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps,
     };
 
-    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000, None)
         .await
         .expect("stream_pool_prices");
 
@@ -82,13 +89,26 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
 
 #[tokio::test]
 async fn pool_listener_v2_on_swap_event() {
-    println!("\n=== Pool listener V2 — Swap events only ===\n");
-    let Some(count) = run_listener(45).await else {
+    println!("\n=== Pool listener V2 Pancake — Sync events only ===\n");
+    let Some(count) = run_listener(45, POOL_ADDRESS, PoolKind::V2Pancake, 25).await else {
         println!("Skipping: set POOL_LISTENER_RPC_WS");
         return;
     };
     println!("\nTotal updates: {}", count);
     if count == 0 {
-        println!("No swap in pool during timeout (normal for quiet pools)");
+        println!("No sync in pool during timeout (normal for quiet pools)");
+    }
+}
+
+#[tokio::test]
+async fn pool_listener_v2_uniswap_on_sync_event() {
+    println!("\n=== Pool listener V2 Uniswap — Sync events only ===\n");
+    let Some(count) = run_listener(45, POOL_ADDRESS_UNISWAP, PoolKind::V2Uniswap, 30).await else {
+        println!("Skipping: set POOL_LISTENER_RPC_WS");
+        return;
+    };
+    println!("\nTotal updates: {}", count);
+    if count == 0 {
+        println!("No sync in pool during timeout (normal for quiet pools)");
     }
 }

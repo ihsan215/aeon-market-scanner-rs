@@ -137,28 +137,30 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     let token1 = Token::create("0x...", "USDT", "USDT", 18, ChainId::BSC);
     let pool = PoolWithTokens {
         pool_address: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE".to_string(),
-        pool_kind: PoolKind::V2,
+        pool_kind: PoolKind::V2Pancake,
         pool_id: None, // required for V4 / V4Pancake
         token0,
         token1,
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps: 30, // e.g. 30 for V2, 500/3000/10000 for V3
     };
 
     // You can pass multiple pools here!
     let pools = vec![pool];
     
-    let mut rx = stream_pool_prices(rpc_ws, 56, pools, 3, 5000).await?;
+    let mut rx = stream_pool_prices(rpc_ws, ChainId::BSC, pools, 3, 5000).await?;
     while let Some(update) = rx.recv().await {
-        println!("price={} block={} symbol={:?}", update.price, update.block_number, update.symbol);
+        println!("bid={} ask={} mid={} block={} symbol={:?}", update.bid, update.ask, update.mid, update.block_number, update.symbol);
     }
     Ok(())
 }
 ```
 
-- **PoolWithTokens**: `pool_address`, `pool_kind`, optional `pool_id` (for V4/V4Pancake), `token0`, `token1`, `price_direction`. Decimals and symbol are taken from the tokens.
+- **PoolWithTokens**: `pool_address`, `pool_kind`, optional `pool_id` (for V4/V4Pancake), `token0`, `token1`, `price_direction`, `fee_bps`. Decimals and symbol are taken from the tokens; `fee_bps` is used for bid/ask spread (e.g. 30 for V2, 500/3000/10000 for V3).
 - **PriceDirection**: `Token1PerToken0` or `Token0PerToken1`.
 - **Reconnect**: `reconnect_attempts` = 0 to disable; n = up to n reconnects. `reconnect_delay_ms` = delay in ms.
 - V2/V3: `pool_address` = pair/pool contract. V4/V4Pancake: `pool_address` = PoolManager, `pool_id` = topic1 from chain explorer.
+- **V4 CL fee note**: For V4 CL pools, fee is read from the Swap event data, so `fee_bps` in `PoolWithTokens` is ignored. You can set `fee_bps: 0` for V4 CL configs.
 
 ## Scan arbitrage opportunities (CEX-only)
 

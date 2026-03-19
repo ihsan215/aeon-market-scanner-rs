@@ -12,13 +12,22 @@ use aeon_market_scanner_rs::{
 
 fn print_update(n: u32, u: &DexPrice) {
     println!(
-        "Update #{}: price={} direction={:?} | sqrt_price_x96={:?} | block={} ts={} | symbol={:?}",
-        n, u.price, u.direction, u.sqrt_price_x96, u.block_number, u.timestamp, u.symbol
+        "Update #{}: bid={} ask={} mid={} direction={:?} | sqrt_price_x96={:?} | block={} ts={} | symbol={:?}",
+        n,
+        u.bid,
+        u.ask,
+        u.mid,
+        u.direction,
+        u.sqrt_price_x96,
+        u.block_number,
+        u.timestamp,
+        u.symbol
     );
 }
 
-const CHAIN_ID: u64 = 56;
-const POOL_ADDRESS: &str = "0x6fe9E9de56356F7eDBfcBB29FAB7cd69471a4869"; // USDT/BNB Uniswap V3 on BNB chain
+const CHAIN_ID: ChainId = ChainId::BSC;
+const POOL_ADDRESS: &str = "0x172fcD41E0913e95784454622d1c3724f546f849"; // USDT/BNB Pancake V3 on BNB chain
+const POOL_ADDRESS_UNISWAP: &str = "0x47a90a2d92a8367a91efa1906bfc8c1e05bf10c4"; // USDT/BNB Uniswap V3 on BNB chain
 
 fn rpc_ws() -> Option<String> {
     let _ = dotenvy::dotenv();
@@ -29,7 +38,7 @@ fn rpc_ws() -> Option<String> {
     Some(s)
 }
 
-async fn run_listener(timeout_secs: u64) -> Option<u32> {
+async fn run_listener(timeout_secs: u64, pool_address: &str, pool_kind: PoolKind) -> Option<u32> {
     let rpc_ws = rpc_ws()?;
 
     let token0 = Token::create(
@@ -47,15 +56,16 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
         ChainId::BSC,
     );
     let pool = PoolWithTokens {
-        pool_address: POOL_ADDRESS.to_string(),
-        pool_kind: PoolKind::V3,
+        pool_address: pool_address.to_string(),
+        pool_kind,
         pool_id: None,
         token0,
         token1,
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps: 100,
     };
 
-    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000, None)
         .await
         .expect("stream_pool_prices");
 
@@ -66,7 +76,7 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
         while let Some(update) = rx.recv().await {
             count += 1;
             print_update(count, &update);
-            if count >= 5000 {
+            if count >= 5 {
                 break;
             }
         }
@@ -82,8 +92,21 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
 
 #[tokio::test]
 async fn pool_listener_v3_on_swap_event() {
-    println!("\n=== Pool listener V3 — Swap events only ===\n");
-    let Some(count) = run_listener(45).await else {
+    println!("\n=== Pool listener V3 Pancake — Swap events only ===\n");
+    let Some(count) = run_listener(45, POOL_ADDRESS, PoolKind::V3Pancake).await else {
+        println!("Skipping: set POOL_LISTENER_RPC_WS");
+        return;
+    };
+    println!("\nTotal updates: {}", count);
+    if count == 0 {
+        println!("No swap in pool during timeout (normal for quiet pools)");
+    }
+}
+
+#[tokio::test]
+async fn pool_listener_v3_uniswap_on_swap_event() {
+    println!("\n=== Pool listener V3 Uniswap — Swap events only ===\n");
+    let Some(count) = run_listener(45, POOL_ADDRESS_UNISWAP, PoolKind::V3Uniswap).await else {
         println!("Skipping: set POOL_LISTENER_RPC_WS");
         return;
     };

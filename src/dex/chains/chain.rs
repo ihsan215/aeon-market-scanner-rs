@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ChainId {
     ETHEREUM = 0x1,
     BSC = 0x38,
@@ -36,3 +36,4 @@ impl ChainId {
         }
     }
 }
+

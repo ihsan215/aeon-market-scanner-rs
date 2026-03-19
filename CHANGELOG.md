@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-03-13
+
+### Added
+
+- DEX pool listener now distinguishes protocol-specific pool kinds (Uniswap/Pancake variants for V2/V3, plus V4 CL variants).
+- Added chain gas estimate utility: `estimated_gas_cost_usd(ChainId) -> f64` with BSC set to 1 cent by default.
+- Added extra pool listener tests for Uniswap V2 and Uniswap V3 scenarios.
+
+### Changed
+
+- Pool listener `stream_pool_prices` now accepts `chain_id: ChainId` (enum) instead of raw `u64`.
+- `DexPrice.chain_id` now uses `ChainId` to keep chain typing consistent across listener/scanner outputs.
+- V3 bid/ask calculation switched to two-direction `calc_amount_out` path with integer-safe U256 math.
+- V4 bid/ask calculation now follows CL-style `calc_amount_out` and reads fee directly from V4 swap event data instead of external config.
+- Scanner pool source naming now reflects enum chain id formatting (e.g. `Pool:BSC:...`).
+
 ## [0.5.0] - 2026-03-09
 
 ### Added

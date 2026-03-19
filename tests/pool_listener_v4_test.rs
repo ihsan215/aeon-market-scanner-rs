@@ -12,12 +12,20 @@ use aeon_market_scanner_rs::{
 
 fn print_update(n: u32, u: &DexPrice) {
     println!(
-        "Update #{}: price={} direction={:?} | sqrt_price_x96={:?} | block={} ts={} | symbol={:?}",
-        n, u.price, u.direction, u.sqrt_price_x96, u.block_number, u.timestamp, u.symbol
+        "Update #{}: bid={} ask={} mid={} direction={:?} | sqrt_price_x96={:?} | block={} ts={} | symbol={:?}",
+        n,
+        u.bid,
+        u.ask,
+        u.mid,
+        u.direction,
+        u.sqrt_price_x96,
+        u.block_number,
+        u.timestamp,
+        u.symbol
     );
 }
 
-const CHAIN_ID: u64 = 56;
+const CHAIN_ID: ChainId = ChainId::BSC;
 /// PancakeSwap Infinity CLPoolManager on BSC
 const POOL_MANAGER_BSC: &str = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
 
@@ -65,9 +73,10 @@ async fn run_listener(timeout_secs: u64) -> Option<u32> {
         token0,
         token1,
         price_direction: PriceDirection::Token1PerToken0,
+        fee_bps: 0,
     };
 
-    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000, None)
         .await
         .expect("stream_pool_prices");
 
@@ -109,9 +118,9 @@ async fn pool_listener_v4_bsc_on_swap_event() {
 
 /// Uniswap V4 PoolManager on BSC
 const UNISWAP_V4_POOL_MANAGER_BSC: &str = "0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF";
-/// USDC/USDT pool id (Uniswap V4 on BSC)
+/// WBNB/USDT pool id (Uniswap V4 on BSC)
 const POOL_ID_UNISWAP_BSC_HEX: &str =
-    "8321c1f53959b14ece4b5400e60aeac59e7b6b8bac446f2f0a89b9e84e68a08a";
+    "a77d89e40ddd6a57b72ad4a8c55554b2fd6171026c903462a9f9c7be133811a6";
 
 fn pool_id_uniswap_bsc() -> [u8; 32] {
     let mut arr = [0u8; 32];
@@ -126,7 +135,7 @@ async fn run_listener_uniswap_v4_bsc(timeout_secs: u64) -> Option<u32> {
 
     let token0 = Token::create(
         "0x0000000000000000000000000000000000000000",
-        "USDC",
+        "WBNB",
         "USDC",
         18,
         ChainId::BSC,
@@ -140,14 +149,15 @@ async fn run_listener_uniswap_v4_bsc(timeout_secs: u64) -> Option<u32> {
     );
     let pool = PoolWithTokens {
         pool_address: UNISWAP_V4_POOL_MANAGER_BSC.to_string(),
-        pool_kind: PoolKind::V4,
+        pool_kind: PoolKind::V4Uniswap,
         pool_id: Some(pool_id_uniswap_bsc()),
         token0,
         token1,
-        price_direction: PriceDirection::Token0PerToken1,
+        price_direction: PriceDirection::Token1PerToken0,
+        fee_bps: 500,
     };
 
-    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, vec![pool], 0, 5000, None)
         .await
         .expect("stream_pool_prices");
 

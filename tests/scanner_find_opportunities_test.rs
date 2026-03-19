@@ -1,5 +1,5 @@
 use aeon_market_scanner_rs::common::{AggregatorPrice, CexExchange, CexPrice, Exchange};
-use aeon_market_scanner_rs::dex::{DexPrice, PoolKind, PriceDirection};
+use aeon_market_scanner_rs::dex::{ChainId, DexPrice, PoolKind, PriceDirection};
 use aeon_market_scanner_rs::scanner::{ArbitrageScanner, PriceData};
 
 #[test]
@@ -53,10 +53,12 @@ fn test_find_opportunities_mock_data() {
     // 3. Mock Pool Listener Price
     // The pool is currently trading at a very high price (great to sell to)
     let pool_prices = vec![DexPrice {
-        chain_id: 56,
+        chain_id: ChainId::BSC,
         pool_address: "0xMockPool".to_string(),
-        pool_kind: PoolKind::V3,
-        price: 320.0, // Selling to Pool yields 320.0 (Best sell!)
+        pool_kind: PoolKind::V3Uniswap,
+        bid: 318.0,
+        ask: 322.0,
+        mid: 320.0, // Selling to Pool yields 320.0 (Best sell!)
         direction: PriceDirection::Token0PerToken1,
         sqrt_price_x96: None,
         block_number: 1234567,
@@ -100,15 +102,15 @@ fn test_find_opportunities_mock_data() {
     let best = &opportunities[0];
     println!("\nBest Arbitrage Opportunity Full Object: {:#?}", best);
 
-    // The best path should be: Buy KyberSwap (281) -> Sell Pool (320)
+    // The best path should be: Buy KyberSwap (281) -> Sell Pool (pool bid = 318)
     assert_eq!(best.source_exchange, "KyberSwap");
-    assert_eq!(best.destination_exchange, "Pool:56:0xMockPool");
+    assert_eq!(best.destination_exchange, "Pool:BSC:0xMockPool");
 
     // Validate that the math checks out!
     // Buy KyberSwap Ask (281.0) with default 0.0% fee (since no override)
-    // Sell Pool Bid (320.0) with default 0.0% fee
-    // Net Spread = 320.0 - 281.0 = 39.0
-    assert!(best.net_spread >= 39.0 && best.net_spread < 40.0);
+    // Sell Pool Bid (318.0) with default 0.0% fee
+    // Net Spread = 318.0 - 281.0 = 37.0
+    assert!(best.net_spread >= 37.0 && best.net_spread < 38.0);
     assert!(best.effective_bid > best.effective_ask);
 
     // Ensure it's correctly identifying the enum PriceData origins

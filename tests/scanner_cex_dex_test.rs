@@ -116,9 +116,12 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
             }
             PriceData::PoolListener(p) => {
                 println!("    Type: Pool");
-                println!("    Chain ID: {}", p.chain_id);
+                println!("    Chain ID: {:?}", p.chain_id);
                 println!("    Pool Address: {}", p.pool_address);
-                println!("    Price: ${:.4}", p.price);
+                println!(
+                    "    Bid: ${:.4} Ask: ${:.4} Mid: ${:.4}",
+                    p.bid, p.ask, p.mid
+                );
                 println!("    Symbol: {}", p.symbol.as_deref().unwrap_or("—"));
             }
         }
@@ -160,9 +163,12 @@ async fn test_scan_cex_dex_arbitrage_ethusdt() {
             }
             PriceData::PoolListener(p) => {
                 println!("    Type: Pool");
-                println!("    Chain ID: {}", p.chain_id);
+                println!("    Chain ID: {:?}", p.chain_id);
                 println!("    Pool Address: {}", p.pool_address);
-                println!("    Price: ${:.4}", p.price);
+                println!(
+                    "    Bid: ${:.4} Ask: ${:.4} Mid: ${:.4}",
+                    p.bid, p.ask, p.mid
+                );
                 println!("    Symbol: {}", p.symbol.as_deref().unwrap_or("—"));
             }
         }

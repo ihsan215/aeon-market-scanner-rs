@@ -1,14 +1,21 @@
 //! Pool listener types: pool kind, config, and price updates.
 
-use crate::dex::chains::Token;
+use crate::dex::chains::{ChainId, Token};
 use serde::{Deserialize, Serialize};
 
-/// Uniswap V2, V3, V4 or PancakeSwap Infinity (V4-style) pool type.
+/// Pool protocol/version (Uniswap vs Pancake, V2/V3/V4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PoolKind {
-    V2,
-    V3,
-    V4,
+    /// Uniswap V2-style pool (pair contract).
+    V2Uniswap,
+    /// PancakeSwap V2-style pool (pair contract).
+    V2Pancake,
+    /// Uniswap V3-style pool.
+    V3Uniswap,
+    /// PancakeSwap V3-style pool.
+    V3Pancake,
+    /// Uniswap V4-style pool (PoolManager + pool_id).
+    V4Uniswap,
     /// PancakeSwap Infinity CLPoolManager; Swap(bytes32,address,int256,int256,uint160,uint128,int24,uint24,uint24)
     V4Infinity,
 }
@@ -37,6 +44,8 @@ pub struct PoolWithTokens {
     pub token1: Token,
     /// Price quote direction: token1/token0 or token0/token1.
     pub price_direction: PriceDirection,
+    /// Fee in basis points (e.g. 30 for V2, 500/3000/10000 for V3). Used for bid/ask spread.
+    pub fee_bps: u32,
 }
 
 /// Configuration for the pool listener.
@@ -45,7 +54,7 @@ pub struct PoolListenerConfig {
     /// WebSocket RPC URL (e.g. `wss://eth-mainnet.g.alchemy.com/v2/...`).
     pub rpc_ws_url: String,
     /// Chain ID (e.g. 1 for Ethereum mainnet).
-    pub chain_id: u64,
+    pub chain_id: ChainId,
     /// Pool (address, kind, tokens and price direction).
     pub pool: PoolWithTokens,
     /// On WS disconnect/error: 0 = no reconnect; n = up to n reconnects.
@@ -54,16 +63,20 @@ pub struct PoolListenerConfig {
     pub reconnect_delay_ms: u64,
 }
 
-/// A single DEX price update from the pool (emitted on each Swap event).
+/// A single DEX price update from the pool (emitted on each Swap or Sync event).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DexPrice {
-    pub chain_id: u64,
+    pub chain_id: ChainId,
     pub pool_address: String,
     pub pool_kind: PoolKind,
-    /// Price derived from swap event parameters.
-    pub price: f64,
+    /// Bid price (token1 per token0, or inverted per direction).
+    pub bid: f64,
+    /// Ask price (token1 per token0, or inverted per direction).
+    pub ask: f64,
+    /// Mid price: (bid + ask) / 2.0.
+    pub mid: f64,
     pub direction: PriceDirection,
-    /// V3: sqrtPriceX96 from swap log. V2: None.
+    /// V3/V4: sqrtPriceX96 from swap log. V2: None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sqrt_price_x96: Option<u128>,
     pub block_number: u64,

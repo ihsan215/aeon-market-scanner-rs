@@ -361,8 +361,8 @@ impl ArbitrageScanner {
         }
         if let Some(pool_prices) = pool_listener_prices {
             for p in pool_prices {
-                let name = format!("Pool:{}:{}", p.chain_id, p.pool_address);
-                buy_candidates.push((p.price, p.price, PriceData::PoolListener(p.clone()), name));
+                let name = format!("Pool:{:?}:{}", p.chain_id, p.pool_address);
+                buy_candidates.push((p.ask, p.ask, PriceData::PoolListener(p.clone()), name));
             }
         }
         buy_candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -403,8 +403,8 @@ impl ArbitrageScanner {
         }
         if let Some(pool_prices) = pool_listener_prices {
             for p in pool_prices {
-                let name = format!("Pool:{}:{}", p.chain_id, p.pool_address);
-                sell_candidates.push((p.price, p.price, PriceData::PoolListener(p.clone()), name));
+                let name = format!("Pool:{:?}:{}", p.chain_id, p.pool_address);
+                sell_candidates.push((p.bid, p.bid, PriceData::PoolListener(p.clone()), name));
             }
         }
         sell_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -412,7 +412,10 @@ impl ArbitrageScanner {
         // Match buy and sell candidates
         for (raw_ask, effective_ask, source_data, source_exchange) in &buy_candidates {
             for (raw_bid, effective_bid, dest_data, dest_exchange) in &sell_candidates {
-                if source_exchange == dest_exchange || *raw_bid <= *raw_ask || *effective_bid <= *effective_ask {
+                if source_exchange == dest_exchange
+                    || *raw_bid <= *raw_ask
+                    || *effective_bid <= *effective_ask
+                {
                     continue;
                 }
 

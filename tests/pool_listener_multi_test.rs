@@ -13,12 +13,21 @@ use std::collections::HashSet;
 
 fn print_update(n: u32, u: &DexPrice) {
     println!(
-        "Multi update #{}: pool={} kind={:?} price={} direction={:?} | block={} ts={} | symbol={:?}",
-        n, u.pool_address, u.pool_kind, u.price, u.direction, u.block_number, u.timestamp, u.symbol
+        "Multi update #{}: pool={} kind={:?} bid={} ask={} mid={} direction={:?} | block={} ts={} | symbol={:?}",
+        n,
+        u.pool_address,
+        u.pool_kind,
+        u.bid,
+        u.ask,
+        u.mid,
+        u.direction,
+        u.block_number,
+        u.timestamp,
+        u.symbol
     );
 }
 
-const CHAIN_ID: u64 = 56;
+const CHAIN_ID: ChainId = ChainId::BSC;
 const POOL_V2_ADDRESS: &str = "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE"; // PancakeSwap V2 BNB/USDT on BNB chain
 const POOL_V3_ADDRESS: &str = "0x6fe9E9de56356F7eDBfcBB29FAB7cd69471a4869"; // USDT/BNB Uniswap V3 on BNB chain
 const POOL_MANAGER_V4_BSC: &str = "0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF"; // Uniswap V4 PoolManager on BSC
@@ -76,36 +85,39 @@ async fn pool_listener_multi_on_swap_event() {
     // PancakeSwap V2 BNB/USDT on BSC
     let pool_v2 = PoolWithTokens {
         pool_address: POOL_V2_ADDRESS.to_string(),
-        pool_kind: PoolKind::V2,
+        pool_kind: PoolKind::V2Pancake,
         pool_id: None,
         token0: token_bnb.clone(),
         token1: token_usdt.clone(),
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps: 250,
     };
 
     // Uniswap V3 USDT/BNB on BSC
     let pool_v3 = PoolWithTokens {
         pool_address: POOL_V3_ADDRESS.to_string(),
-        pool_kind: PoolKind::V3,
+        pool_kind: PoolKind::V3Uniswap,
         pool_id: None,
         token0: token_usdt.clone(),
         token1: token_bnb.clone(),
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps: 500,
     };
 
     // Uniswap V4 USDC/USDT on BSC
     let pool_v4 = PoolWithTokens {
         pool_address: POOL_MANAGER_V4_BSC.to_string(),
-        pool_kind: PoolKind::V4,
+        pool_kind: PoolKind::V4Uniswap,
         pool_id: Some(pool_id_uniswap_bsc()),
         token0: token_usdc,
         token1: token_usdt,
         price_direction: PriceDirection::Token0PerToken1,
+        fee_bps: 67,
     };
 
     let pools = vec![pool_v2, pool_v3, pool_v4];
 
-    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, pools, 0, 5000)
+    let mut rx = stream_pool_prices(rpc_ws, CHAIN_ID, pools, 0, 5000, None)
         .await
         .expect("stream_pool_prices");
 
