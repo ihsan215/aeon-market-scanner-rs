@@ -51,7 +51,7 @@ pub use common::{
     taker_fee_rate_with_overrides,
 };
 pub use dex::{
-    ChainId, DexPrice, KyberSwap, PoolKind, PoolListenerConfig, PoolWithTokens,
-    PriceDirection, Token, stream_pool_prices,
+    ChainId, DexPrice, KyberSwap, PoolKind, PoolListenerConfig, PoolWithTokens, PriceDirection,
+    Token, stream_pool_prices,
 };
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};

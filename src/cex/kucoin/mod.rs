@@ -134,8 +134,11 @@ impl CEXTrait for Kucoin {
 
         let client = self.client.clone();
         let (tx, rx) = mpsc::channel(64);
-        let delay =
-            std::time::Duration::from_millis(if reconnect_delay_ms == 0 { 1000 } else { reconnect_delay_ms });
+        let delay = std::time::Duration::from_millis(if reconnect_delay_ms == 0 {
+            1000
+        } else {
+            reconnect_delay_ms
+        });
 
         tokio::spawn(async move {
             let mut attempt = 0u32;
@@ -159,9 +162,7 @@ impl CEXTrait for Kucoin {
                         }
                     },
                     Err(_) => {
-                        if tx.is_closed()
-                            || reconnect_attempts == 0
-                            || attempt > reconnect_attempts
+                        if tx.is_closed() || reconnect_attempts == 0 || attempt > reconnect_attempts
                         {
                             break;
                         }
@@ -171,10 +172,7 @@ impl CEXTrait for Kucoin {
                 };
 
                 if bullet.code != "200000" {
-                    if tx.is_closed()
-                        || reconnect_attempts == 0
-                        || attempt > reconnect_attempts
-                    {
+                    if tx.is_closed() || reconnect_attempts == 0 || attempt > reconnect_attempts {
                         break;
                     }
                     tokio::time::sleep(delay).await;
@@ -184,9 +182,7 @@ impl CEXTrait for Kucoin {
                 let server = match bullet.data.instance_servers.first() {
                     Some(s) => s,
                     None => {
-                        if tx.is_closed()
-                            || reconnect_attempts == 0
-                            || attempt > reconnect_attempts
+                        if tx.is_closed() || reconnect_attempts == 0 || attempt > reconnect_attempts
                         {
                             break;
                         }
@@ -205,9 +201,7 @@ impl CEXTrait for Kucoin {
                 let (ws_stream, _) = match tokio_tungstenite::connect_async(&ws_url).await {
                     Ok(v) => v,
                     Err(_) => {
-                        if tx.is_closed()
-                            || reconnect_attempts == 0
-                            || attempt > reconnect_attempts
+                        if tx.is_closed() || reconnect_attempts == 0 || attempt > reconnect_attempts
                         {
                             break;
                         }
@@ -296,10 +290,7 @@ impl CEXTrait for Kucoin {
                     }
                 }
 
-                if tx.is_closed()
-                    || reconnect_attempts == 0
-                    || attempt > reconnect_attempts
-                {
+                if tx.is_closed() || reconnect_attempts == 0 || attempt > reconnect_attempts {
                     break;
                 }
                 tokio::time::sleep(delay).await;

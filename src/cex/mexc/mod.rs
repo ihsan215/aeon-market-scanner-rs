@@ -1,3 +1,4 @@
+mod account;
 mod types;
 
 use crate::common::{
@@ -5,7 +6,6 @@ use crate::common::{
     format_symbol_for_exchange, format_symbol_for_exchange_ws, get_timestamp_millis,
     normalize_symbol, parse_f64, standard_symbol_for_cex_ws_response,
 };
-use crate::create_exchange;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use prost::Message;
@@ -13,10 +13,53 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use types::{MexcBookTickerResponse, MexcPushBody, MexcPushDataWrapper};
 
+pub use account::{
+    MexcAccountBalanceSnapshot, MexcBalance, MexcCancelledOrder, MexcLimitOrderType,
+    MexcOrderStatus, MexcOrderType, MexcPlacedOrder, MexcSpotOrderDisplay, MexcSpotOrderUpdate,
+    MexcTradeSide,
+};
+
 const MEXC_API_BASE: &str = "https://api.mexc.com/api/v3";
 const MEXC_WS_URL: &str = "wss://wbs-api.mexc.com/ws";
 
-create_exchange!(Mexc);
+/// MEXC REST/WebSocket client. Public endpoints ([`CEXTrait::get_price`], etc.) work with [`Mexc::new`].
+/// Account and signed endpoints require [`Mexc::with_credentials`].
+#[derive(Clone)]
+pub struct Mexc {
+    client: reqwest::Client,
+    api_key: Option<String>,
+    api_secret: Option<String>,
+}
+
+impl Mexc {
+    /// Keyless client (public market data only).
+    pub fn new() -> Self {
+        Self {
+            client: crate::common::create_http_client(),
+            api_key: None,
+            api_secret: None,
+        }
+    }
+
+    /// API key and secret for signed routes (balances, orders, private user stream).
+    pub fn with_credentials(api_key: impl Into<String>, api_secret: impl Into<String>) -> Self {
+        Self {
+            client: crate::common::create_http_client(),
+            api_key: Some(api_key.into()),
+            api_secret: Some(api_secret.into()),
+        }
+    }
+
+    pub(crate) fn credentials(&self) -> Result<(&str, &str), MarketScannerError> {
+        match (&self.api_key, &self.api_secret) {
+            (Some(k), Some(s)) if !k.is_empty() && !s.is_empty() => Ok((k.as_str(), s.as_str())),
+            _ => Err(MarketScannerError::ApiError(
+                "MEXC API credentials not configured; use Mexc::with_credentials(api_key, api_secret)"
+                    .to_string(),
+            )),
+        }
+    }
+}
 
 #[async_trait]
 impl ExchangeTrait for Mexc {
@@ -203,6 +246,7 @@ fn parse_mexc_protobuf(bytes: &[u8]) -> Option<CexPrice> {
     let wrapper = MexcPushDataWrapper::decode(prost::bytes::Bytes::copy_from_slice(bytes)).ok()?;
     let body = wrapper.body?;
     let ticker = match body {
+        MexcPushBody::PrivateOrders(_) => return None,
         MexcPushBody::PublicAggreBookTicker(t) => t,
     };
 

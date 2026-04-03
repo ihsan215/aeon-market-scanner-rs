@@ -4,6 +4,7 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 - REST price fetching (`get_price`)
 - CEX WebSocket streams (`stream_price_websocket`) with configurable reconnect (attempts + delay in ms)
+- **MEXC signed API** (optional): account balances, spot orders (market/limit/cancel), and a **private** spot order WebSocket stream — use `Mexc::with_credentials(...)` (keys are **not** read from env inside the crate)
 - **DEX pool price listener**: Uniswap V2, V3, V4 and PancakeSwap Infinity (V4-style) pool prices over WebSocket RPC (`stream_pool_prices`); swap-event only, price from event params
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets` with `ScannerEvent` stream)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
@@ -45,14 +46,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.5"
+aeon-market-scanner-rs = "0.7"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.5.0"
+aeon-market-scanner-rs = "0.7.0"
 ```
 
 Then run `cargo build`.
@@ -74,6 +75,30 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     Ok(())
 }
 ```
+
+## MEXC: balances, orders, private order stream (signed API)
+
+Public ticker data works with `Mexc::new()`. For **signed** REST and the **private** user order WebSocket, pass API keys explicitly — the crate does **not** read `MEXC_API_KEY` / `MEXC_API_SECRET` from the environment.
+
+```rust,no_run
+use aeon_market_scanner_rs::cex::mexc::Mexc;
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    let mexc = Mexc::with_credentials("your_api_key", "your_api_secret");
+
+    let snapshot = mexc.get_account_balances().await?;
+    println!("balances: {}", snapshot.balances.len());
+
+    let _order_updates = mexc.stream_spot_order_updates(5, 5_000).await?;
+    // Spot trading: `place_market_order_*`, `place_limit_order`, `cancel_order` on `Mexc`.
+    // `recv()` on the channel for private order fills (protobuf-backed on MEXC).
+
+    Ok(())
+}
+```
+
+See `Mexc` and `cex::mexc` re-exports for types such as `MexcSpotOrderUpdate`, `MexcPlacedOrder`, `MexcLimitOrderType`, `MexcTradeSide`.
 
 ## Stream CEX prices via WebSocket (with reconnect)
 
@@ -344,7 +369,7 @@ println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
 
 ## Notes / caveats
 
-- **Public APIs**: this crate uses exchanges' **public REST and (where available) public WebSocket** market data endpoints. No API keys are required for the features in this crate. Usage is still subject to each provider’s rate limits and terms.
+- **Public APIs**: default CEX usage (`get_price`, public WebSockets, arbitrage scanner) uses **public** endpoints only — **no API keys** for those paths. **MEXC signed features** (`Mexc::with_credentials`, balances, trading, private order stream) require keys you supply in code. Usage is subject to each provider’s rate limits and terms.
 - **Network + rate limits**: exchange APIs can rate-limit or temporarily fail; callers should expect errors.
 - **Symbols**: most examples use common `BASEQUOTE` format like `BTCUSDT`. Some exchanges may require different formatting internally; the crate normalizes per-exchange.
 - **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if `reconnect_attempts` > 0).

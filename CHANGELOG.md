@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-03
+
+### Added
+
+- **MEXC account & trading** (spot):
+  - `get_account_balances()` — signed REST account snapshot.
+  - `stream_spot_order_updates(...)` — private user order stream (`spot@private.orders.v3.api.pb`), protobuf-decoded pushes; receiver is returned only after WebSocket subscribe succeeds (reduces missed early fills).
+  - `place_market_order_by_quantity` / `place_market_order_by_quote_amount`, `place_limit_order` (Limit / Post-only / IOC / FOK), `cancel_order`.
+- Re-exported MEXC order/balance types (e.g. `MexcSpotOrderUpdate`, `MexcPlacedOrder`, `MexcLimitOrderType`, `MexcTradeSide`, …).
+
+### Changed
+
+- **Breaking (`Mexc`)**: struct is no longer generated only by `create_exchange!`. **`Mexc::new()`** — public market data only (no credentials). **`Mexc::with_credentials(api_key, api_secret)`** — required for signed REST and the private order WebSocket;
+- **Dependencies**: `hmac`, `sha2`, `hex` for MEXC HMAC-SHA256 signing.
+
+### Notes
+
+- Integration tests under `tests/` (`mexc_*`) exercise live APIs when `MEXC_API_KEY` / `MEXC_API_SECRET` are set; they are optional for crate consumers.
+
 ## [0.6.0] - 2026-03-13
 
 ### Added
