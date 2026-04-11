@@ -4,7 +4,7 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 
 - REST price fetching (`get_price`)
 - CEX WebSocket streams (`stream_price_websocket`) with configurable reconnect (attempts + delay in ms)
-- **MEXC signed API** (optional): account balances, spot orders (market/limit/cancel), and a **private** spot order WebSocket stream — use `Mexc::with_credentials(...)` (keys are **not** read from env inside the crate)
+- **MEXC signed API** (optional): account balances, spot orders (market/limit/cancel, **batch** market/limit), and a **private** spot order WebSocket stream — use `Mexc::with_credentials(...)` (keys are **not** read from env inside the crate)
 - **DEX pool price listener**: Uniswap V2, V3, V4 and PancakeSwap Infinity (V4-style) pool prices over WebSocket RPC (`stream_pool_prices`); swap-event only, price from event params
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets` with `ScannerEvent` stream)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
@@ -53,7 +53,7 @@ tokio = { version = "1", features = ["full"] }
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.7.0"
+aeon-market-scanner-rs = "0.7.1"
 ```
 
 Then run `cargo build`.
@@ -91,14 +91,64 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     println!("balances: {}", snapshot.balances.len());
 
     let _order_updates = mexc.stream_spot_order_updates(5, 5_000).await?;
-    // Spot trading: `place_market_order_*`, `place_limit_order`, `cancel_order` on `Mexc`.
+    // Spot trading: `place_market_order_*`, `place_limit_order`, `cancel_order`,
+    // `place_batch_orders` / `place_batch_limit_orders` on `Mexc`.
     // `recv()` on the channel for private order fills (protobuf-backed on MEXC).
 
     Ok(())
 }
 ```
 
-See `Mexc` and `cex::mexc` re-exports for types such as `MexcSpotOrderUpdate`, `MexcPlacedOrder`, `MexcLimitOrderType`, `MexcTradeSide`.
+### MEXC batch spot orders
+
+Up to **20** orders per request, **same symbol** on every leg ([MEXC batch orders](https://www.mexc.com/api-docs/spot-v3/spot-account-trade#batch-orders)). Use `place_batch_limit_orders` for limit legs, or build `MexcBatchOrderItem` (e.g. `market_by_quantity`, `market_by_quote_amount`, `limit`) and call `place_batch_orders`.
+
+```rust,no_run
+use aeon_market_scanner_rs::cex::mexc::{
+    Mexc, MexcBatchOrderItem, MexcLimitOrderType, MexcTradeSide,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    let mexc = Mexc::with_credentials("your_api_key", "your_api_secret");
+    let symbol = "BTCUSDT";
+
+    // Limit batch: price + quantity per leg (here: two IOC orders — adjust prices to the book).
+    let limit_rows = mexc
+        .place_batch_limit_orders(symbol, &[
+            (
+                MexcTradeSide::Buy,
+                "65000.0",
+                "0.0001",
+                MexcLimitOrderType::ImmediateOrCancel,
+            ),
+            (
+                MexcTradeSide::Sell,
+                "70000.0",
+                "0.0001",
+                MexcLimitOrderType::ImmediateOrCancel,
+            ),
+        ])
+        .await?;
+    for row in &limit_rows {
+        println!("{row:?}");
+    }
+
+    // Market batch: base quantity per leg (same symbol).
+    let market_batch = [
+        MexcBatchOrderItem::market_by_quantity(symbol, MexcTradeSide::Buy, "0.0001")?,
+        MexcBatchOrderItem::market_by_quantity(symbol, MexcTradeSide::Sell, "0.0001")?,
+    ];
+    let market_rows = mexc.place_batch_orders(&market_batch).await?;
+    for row in &market_rows {
+        println!("{row:?}");
+    }
+
+    Ok(())
+}
+```
+
+See `Mexc` and `cex::mexc` re-exports for types such as `MexcSpotOrderUpdate`, `MexcPlacedOrder`, `MexcBatchOrderItem`, `MexcBatchOrderResult`, `MexcLimitOrderType`, `MexcTradeSide`.
 
 ## Stream CEX prices via WebSocket (with reconnect)
 

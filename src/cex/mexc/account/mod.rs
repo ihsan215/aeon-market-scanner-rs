@@ -6,7 +6,9 @@ pub(super) mod types;
 use crate::common::MarketScannerError;
 use tokio::sync::mpsc;
 
-pub use spot::{MexcCancelledOrder, MexcLimitOrderType, MexcPlacedOrder};
+pub use spot::{
+    MexcBatchOrderItem, MexcBatchOrderResult, MexcCancelledOrder, MexcLimitOrderType, MexcPlacedOrder,
+};
 pub use stream::types::{
     MexcAccountBalanceSnapshot, MexcBalance, MexcOrderStatus, MexcOrderType, MexcSpotOrderDisplay,
     MexcSpotOrderUpdate, MexcTradeSide,

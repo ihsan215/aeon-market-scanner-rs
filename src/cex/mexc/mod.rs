@@ -14,9 +14,9 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use types::{MexcBookTickerResponse, MexcPushBody, MexcPushDataWrapper};
 
 pub use account::{
-    MexcAccountBalanceSnapshot, MexcBalance, MexcCancelledOrder, MexcLimitOrderType,
-    MexcOrderStatus, MexcOrderType, MexcPlacedOrder, MexcSpotOrderDisplay, MexcSpotOrderUpdate,
-    MexcTradeSide,
+    MexcAccountBalanceSnapshot, MexcBalance, MexcBatchOrderItem, MexcBatchOrderResult,
+    MexcCancelledOrder, MexcLimitOrderType, MexcOrderStatus, MexcOrderType, MexcPlacedOrder,
+    MexcSpotOrderDisplay, MexcSpotOrderUpdate, MexcTradeSide,
 };
 
 const MEXC_API_BASE: &str = "https://api.mexc.com/api/v3";

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-04-11
+
+### Added
+
+- **MEXC spot batch orders** ([`POST /api/v3/batchOrders`](https://www.mexc.com/api-docs/spot-v3/spot-account-trade#batch-orders)):
+  - `place_batch_orders(&[MexcBatchOrderItem])`, `place_batch_limit_orders(...)` (same-symbol legs, max 20 per request).
+  - Types: `MexcBatchOrderItem` (limit / market-by-qty / market-by-quote helpers), `MexcBatchOrderResult`.
+- **Dependency**: `url` — signed REST query strings use form-urlencoded encoding (required for `batchOrders` JSON in the query).
+
+### Changed
+
+- **MEXC `signed_request`**: query parameters are now URL-encoded when building the string to sign and send (backward compatible for simple alphanumeric params).
+
+### Notes
+
+- Optional integration tests: `tests/mexc_batch_market_test.rs`, `tests/mexc_batch_limit_test.rs` (live API when `MEXC_API_KEY` / `MEXC_API_SECRET` are set).
+
 ## [0.7.0] - 2026-04-03
 
 ### Added

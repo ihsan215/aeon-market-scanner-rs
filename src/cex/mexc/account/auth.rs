@@ -3,6 +3,7 @@ use hmac::{Hmac, Mac};
 use reqwest::Method;
 use sha2::Sha256;
 use std::collections::BTreeMap;
+use url::form_urlencoded::Serializer;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -118,11 +119,11 @@ async fn signed_raw_request(
 }
 
 fn build_query_string(params: &BTreeMap<String, String>) -> String {
-    params
-        .iter()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join("&")
+    let mut ser = Serializer::new(String::new());
+    for (key, value) in params {
+        ser.append_pair(key, value);
+    }
+    ser.finish()
 }
 
 fn sign_query(query: &str, secret: &str) -> Result<String, MarketScannerError> {

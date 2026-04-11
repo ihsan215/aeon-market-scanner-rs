@@ -4,7 +4,10 @@ use crate::common::{CexExchange, MarketScannerError, format_symbol_for_exchange}
 use reqwest::Method;
 use std::collections::BTreeMap;
 
-pub use types::{MexcCancelledOrder, MexcLimitOrderType, MexcPlacedOrder};
+pub use types::{
+    MexcBatchOrderItem, MexcBatchOrderResult, MexcCancelledOrder, MexcLimitOrderType,
+    MexcPlacedOrder,
+};
 
 impl super::super::Mexc {
     pub async fn place_market_order_by_quantity(
@@ -78,6 +81,55 @@ impl super::super::Mexc {
         params.insert("orderId".to_string(), order_id.to_string());
 
         super::auth::signed_request(self, Method::DELETE, "order", params).await
+    }
+
+    /// Batch place up to 20 orders for the **same** symbol ([MEXC batch orders](https://www.mexc.com/api-docs/spot-v3/spot-account-trade#batch-orders)).
+    pub async fn place_batch_orders(
+        &self,
+        orders: &[MexcBatchOrderItem],
+    ) -> Result<Vec<MexcBatchOrderResult>, MarketScannerError> {
+        if orders.is_empty() {
+            return Err(MarketScannerError::ApiError(
+                "MEXC batchOrders requires at least one order".to_string(),
+            ));
+        }
+        if orders.len() > 20 {
+            return Err(MarketScannerError::ApiError(
+                "MEXC batchOrders supports at most 20 orders per request".to_string(),
+            ));
+        }
+
+        let batch_json = serde_json::to_string(orders).map_err(|e| {
+            MarketScannerError::ApiError(format!("batchOrders JSON serialization failed: {e}"))
+        })?;
+        let mut params = BTreeMap::new();
+        params.insert("batchOrders".to_string(), batch_json);
+
+        super::auth::signed_request(self, Method::POST, "batchOrders", params).await
+    }
+
+    /// Convenience: batch limit orders on one symbol (same constraints as [`Self::place_batch_orders`]).
+    pub async fn place_batch_limit_orders(
+        &self,
+        symbol: &str,
+        legs: &[(
+            super::stream::types::MexcTradeSide,
+            &str,
+            &str,
+            MexcLimitOrderType,
+        )],
+    ) -> Result<Vec<MexcBatchOrderResult>, MarketScannerError> {
+        let mut items = Vec::with_capacity(legs.len());
+        for (side, price, quantity, order_type) in legs {
+            items.push(MexcBatchOrderItem::limit(
+                symbol,
+                *side,
+                price,
+                quantity,
+                *order_type,
+            )?);
+        }
+        self.place_batch_orders(&items).await
     }
 }
 
