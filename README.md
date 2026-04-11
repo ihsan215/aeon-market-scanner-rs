@@ -101,7 +101,7 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 
 ### MEXC batch spot orders
 
-Up to **20** orders per request, **same symbol** on every leg ([MEXC batch orders](https://www.mexc.com/api-docs/spot-v3/spot-account-trade#batch-orders)). Use `place_batch_limit_orders` for limit legs, or build `MexcBatchOrderItem` (e.g. `market_by_quantity`, `market_by_quote_amount`, `limit`) and call `place_batch_orders`.
+Up to **20** orders per request, **same symbol** on every leg. Use `place_batch_limit_orders` for limit legs, or build `MexcBatchOrderItem` (e.g. `market_by_quantity`, `market_by_quote_amount`, `limit`) and call `place_batch_orders`.
 
 ```rust,no_run
 use aeon_market_scanner_rs::cex::mexc::{
@@ -222,7 +222,6 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
 
     // You can pass multiple pools here!
     let pools = vec![pool];
-    
     let mut rx = stream_pool_prices(rpc_ws, ChainId::BSC, pools, 3, 5000).await?;
     while let Some(update) = rx.recv().await {
         println!("bid={} ask={} mid={} block={} symbol={:?}", update.bid, update.ask, update.mid, update.block_number, update.symbol);
