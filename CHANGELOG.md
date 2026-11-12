@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-12
+
+### Fixed
+
+- **Gate WebSocket prices were price-merged**: `depth.subscribe` used interval `"0.01"`, which rounds the book to 0.01 steps. Low-priced assets came back wrong (DOGE ~0.067 reported as bid 0.06 / ask 0.07). The interval is now `"0"` (no merging).
+- **Bitfinex WebSocket symbols**: prices carried the raw channel name (`TBTCUST`, `TDOGE:UST`). They are now normalised to the standard `BTCUSDT` / `DOGEUSDT` form.
+- **Symbols with 1–2 letter bases** (`OPUSDT`, `ARUSDT`, `ZKUSDT`, `SUSDT`, …) were formatted wrongly, or rejected, on venues that use a separator:
+  - Affected venues: OKX, KuCoin, Coinbase, Gate, Crypto.com, Upbit, and Kraken WS. For example, OKX received `OPU-SDT` and Gate received `OPU_SDT`.
+  - The quote-suffix checks now only require a non-empty base.
+
+### Changed (breaking)
+
+- **Bitfinex `CexPrice.symbol` is now the standard symbol** (`BTCUSDT`) for both REST and WebSocket. It was `BTCUST`.
+  - Requests still use Bitfinex's `tBTCUST` naming internally.
+  - Bitfinex prices now match other exchanges by symbol, e.g. in `ArbitrageScanner`. Before, they never matched `BTCUSDT`.
+  - If you matched on `"BTCUST"`, switch to `"BTCUSDT"`.
+
+### Added
+
+- `common::utils::bitfinex_symbol_to_standard()` helper (`tBTCUST` / `tDOGE:UST` → `BTCUSDT` / `DOGEUSDT`).
+- Unit tests for symbol formatting and Bitfinex/Upbit WS symbol normalisation. Unit test for the Gate subscribe message.
+- Live regression tests:
+  - `tests/short_base_symbols_test.rs`
+  - `bitfinex_ws_reports_standard_symbols`
+  - `gateio_ws_low_priced_assets_are_not_rounded`
+
 ## [0.7.1] - 2026-04-11
 
 ### Added

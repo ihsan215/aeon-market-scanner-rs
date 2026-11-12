@@ -112,16 +112,7 @@ impl CEXTrait for Gateio {
             .map(|s| format_symbol_for_exchange_ws(s, &CexExchange::Gateio))
             .collect::<Result<Vec<_>, _>>()?;
 
-        // depth.subscribe: multi-market [[market, limit, interval], ...]
-        let params: Vec<serde_json::Value> = gateio_symbols
-            .iter()
-            .map(|s| serde_json::json!([s, 10, "0.01"]))
-            .collect();
-        let subscribe_msg = serde_json::json!({
-            "id": 1,
-            "method": "depth.subscribe",
-            "params": params
-        });
+        let subscribe_msg = depth_subscribe_message(&gateio_symbols);
 
         let (tx, rx) = mpsc::channel(64);
         let delay = std::time::Duration::from_millis(if reconnect_delay_ms == 0 {
@@ -254,5 +245,40 @@ impl CEXTrait for Gateio {
         });
 
         Ok(rx)
+    }
+}
+
+/// `depth.subscribe` request for several markets: `[[market, limit, interval], ...]`.
+///
+/// `interval` is the price-merge precision. It must be `"0"` (no merging): any other value
+/// (e.g. `"0.01"`) rounds the book to that step, which corrupts prices of low-priced assets
+/// (DOGE at ~0.067 would be reported as bid 0.06 / ask 0.07).
+pub(crate) fn depth_subscribe_message(markets: &[String]) -> serde_json::Value {
+    let params: Vec<serde_json::Value> = markets
+        .iter()
+        .map(|m| serde_json::json!([m, 10, "0"]))
+        .collect();
+    serde_json::json!({
+        "id": 1,
+        "method": "depth.subscribe",
+        "params": params
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::depth_subscribe_message;
+
+    #[test]
+    fn depth_subscribe_uses_unmerged_precision() {
+        let msg = depth_subscribe_message(&["BTC_USDT".to_string(), "DOGE_USDT".to_string()]);
+        assert_eq!(msg["method"], "depth.subscribe");
+        let params = msg["params"].as_array().unwrap();
+        assert_eq!(params.len(), 2);
+        for p in params {
+            assert_eq!(p[1], 10, "depth limit");
+            assert_eq!(p[2], "0", "interval must be \"0\" (no price merging)");
+        }
+        assert_eq!(params[1][0], "DOGE_USDT");
     }
 }

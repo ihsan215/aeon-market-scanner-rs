@@ -38,3 +38,30 @@ async fn bitfinex_ws_stream_multi_symbol() {
     );
     println!("\nReceived {} prices from {:?}.", count, seen);
 }
+
+/// Regression (0.8.0): WS prices used the raw channel symbol (`TBTCUST`, `TDOGE:UST`).
+/// (Colon-style names like `tDOGE:UST` are covered by unit tests in `src/common/utils.rs`.)
+#[tokio::test]
+async fn bitfinex_ws_reports_standard_symbols() {
+    let expected = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+    let mut rx = Bitfinex::new()
+        .stream_price_websocket(&expected, 5, 5000)
+        .await
+        .expect("WebSocket stream");
+
+    let mut seen = std::collections::HashSet::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    while seen.len() < expected.len() {
+        let price = tokio::time::timeout_at(deadline, rx.recv())
+            .await
+            .expect("timed out waiting for all symbols")
+            .expect("stream closed");
+        assert!(
+            expected.contains(&price.symbol.as_str()),
+            "unexpected symbol {:?} (should be standard BTCUSDT form)",
+            price.symbol
+        );
+        seen.insert(price.symbol);
+    }
+    println!("Bitfinex WS symbols: {:?}", seen);
+}

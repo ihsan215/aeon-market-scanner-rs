@@ -23,21 +23,20 @@ async fn test_bitfinex_get_price() {
 
 #[tokio::test]
 async fn test_bitfinex_get_price_usdt() {
-    // Bitfinex uses BTCUST instead of BTCUSDT
-    // Test that BTCUSDT gets converted to BTCUST and works
+    // Bitfinex calls USDT "UST" (tBTCUST); the request is converted but the
+    // returned symbol is the standard BTCUSDT so it matches other exchanges.
     let exchange = Bitfinex::new();
     let result = exchange.get_price("BTCUSDT").await;
 
     assert!(
         result.is_ok(),
-        "Should be able to get BTCUSDT price (converted to BTCUST)"
+        "Should be able to get BTCUSDT price (requested as tBTCUST)"
     );
     let price = result.unwrap();
 
-    // Symbol should be BTCUST (what Bitfinex actually uses)
     assert_eq!(
-        price.symbol, "BTCUST",
-        "Symbol should be normalized to BTCUST for Bitfinex"
+        price.symbol, "BTCUSDT",
+        "Symbol should be the standard BTCUSDT, not Bitfinex's BTCUST"
     );
 
     // Verify price data is valid
@@ -47,7 +46,7 @@ async fn test_bitfinex_get_price_usdt() {
     assert!(price.mid_price >= price.bid_price);
     assert!(price.mid_price <= price.ask_price);
 
-    println!("BTCUSDT converted to BTCUST: OK");
+    println!("BTCUSDT via tBTCUST: OK");
     println!(
         "Symbol: {}, Bid: ${}, Ask: ${}, Mid: ${}",
         price.symbol, price.bid_price, price.ask_price, price.mid_price

@@ -150,21 +150,9 @@ impl CEXTrait for Bitfinex {
 
         let mid_price = find_mid_price(bid, ask);
 
-        // Normalize symbol back to standard format
-        // Bitfinex converts USDT to UST, so we need to convert back
-        // But we should preserve what was actually used on the exchange
-        // Since we converted BTCUSDT -> tBTCUST, we should return BTCUST in the response
-        let standard_symbol = if symbol.to_uppercase().ends_with("USDT") {
-            // Convert back: BTCUSDT -> BTCUST (what Bitfinex actually uses)
-            let base = symbol
-                .to_uppercase()
-                .replace("-", "")
-                .replace("_", "")
-                .replace("USDT", "UST");
-            base
-        } else {
-            normalize_symbol(symbol)
-        };
+        // Report the standard symbol (BTCUSDT), not Bitfinex's internal UST naming, so prices
+        // line up with other exchanges (e.g. in the arbitrage scanner).
+        let standard_symbol = normalize_symbol(symbol);
 
         Ok(CexPrice {
             symbol: standard_symbol,
