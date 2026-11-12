@@ -20,4 +20,7 @@ pub struct CoinbaseTickerWs {
     pub best_ask: String,
     #[serde(rename = "best_ask_size")]
     pub best_ask_size: String,
+    /// Event time, RFC 3339 (e.g. `2026-11-12T08:26:41.123456Z`).
+    #[serde(default)]
+    pub time: Option<String>,
 }

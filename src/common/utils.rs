@@ -27,6 +27,35 @@ pub fn normalize_symbol(symbol: &str) -> String {
     symbol.to_uppercase().replace('-', "").replace('_', "")
 }
 
+/// Epoch timestamp from a JSON number or numeric string, normalised to milliseconds
+/// (seconds, micro- and nanoseconds are detected by magnitude). `None` if missing or implausible.
+pub fn json_ms(value: Option<&serde_json::Value>) -> Option<u64> {
+    let raw: u64 = match value? {
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f as u64))?,
+        serde_json::Value::String(s) => s.trim().parse().ok()?,
+        _ => return None,
+    };
+    epoch_to_ms(raw)
+}
+
+fn epoch_to_ms(raw: u64) -> Option<u64> {
+    let ms = match raw {
+        0 => return None,
+        r if r < 100_000_000_000 => r * 1_000, // seconds
+        r if r < 100_000_000_000_000 => r,     // milliseconds
+        r if r < 100_000_000_000_000_000 => r / 1_000, // microseconds
+        r => r / 1_000_000,                    // nanoseconds
+    };
+    Some(ms)
+}
+
+/// RFC 3339 / ISO 8601 time (e.g. `2026-11-12T08:26:41.099248Z`) to epoch milliseconds.
+pub fn iso8601_ms(s: &str) -> Option<u64> {
+    chrono::DateTime::parse_from_rfc3339(s.trim())
+        .ok()
+        .and_then(|d| u64::try_from(d.timestamp_millis()).ok())
+}
+
 /// True if `normalized` ends with `quote` and has a non-empty base (e.g. `SUSDT` -> base `S`).
 fn has_quote(normalized: &str, quote: &str) -> bool {
     normalized.len() > quote.len() && normalized.ends_with(quote)
@@ -421,6 +450,46 @@ mod tests {
         // already-standard input is left alone
         assert_eq!(std("BTCUSDT"), "BTCUSDT");
         assert_eq!(bitfinex_symbol_to_standard("BTCUST"), "BTCUSDT");
+    }
+
+    #[test]
+    fn json_ms_parses_numbers_strings_and_units() {
+        use serde_json::json;
+        assert_eq!(json_ms(Some(&json!(1794472001275u64))), Some(1794472001275));
+        assert_eq!(json_ms(Some(&json!("1794472001275"))), Some(1794472001275));
+        assert_eq!(
+            json_ms(Some(&json!(1794472001u64))),
+            Some(1794472001000),
+            "seconds"
+        );
+        assert_eq!(
+            json_ms(Some(&json!(1794472001275123u64))),
+            Some(1794472001275),
+            "micros"
+        );
+        assert_eq!(
+            json_ms(Some(&json!(1794472001275123456u64))),
+            Some(1794472001275),
+            "nanos"
+        );
+        assert_eq!(json_ms(Some(&json!(0))), None);
+        assert_eq!(json_ms(Some(&json!("abc"))), None);
+        assert_eq!(json_ms(None), None);
+    }
+
+    #[test]
+    fn iso8601_ms_parses_exchange_formats() {
+        // Kraken / Coinbase style
+        assert_eq!(
+            iso8601_ms("2026-11-12T08:26:41.099248Z"),
+            Some(1794472001099)
+        );
+        assert_eq!(iso8601_ms("2026-11-12T08:26:41Z"), Some(1794472001000));
+        assert_eq!(
+            iso8601_ms("2026-11-12T11:26:41.5+03:00"),
+            Some(1794472001500)
+        );
+        assert_eq!(iso8601_ms("not a date"), None);
     }
 
     #[test]

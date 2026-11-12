@@ -188,6 +188,7 @@ impl CEXTrait for Coinbase {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Coinbase),
         })
     }
@@ -292,6 +293,10 @@ impl CEXTrait for Coinbase {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: ticker
+                            .time
+                            .as_deref()
+                            .and_then(crate::common::utils::iso8601_ms),
                         exchange: Exchange::Cex(CexExchange::Coinbase),
                     };
                     if tx.send(price).await.is_err() {

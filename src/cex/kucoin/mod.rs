@@ -110,6 +110,7 @@ impl CEXTrait for Kucoin {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Kucoin),
         })
     }
@@ -359,6 +360,7 @@ fn parse_kucoin_level1(v: &serde_json::Value) -> Option<CexPrice> {
         bid_qty,
         ask_qty,
         timestamp: get_timestamp_millis(),
+        exchange_timestamp: crate::common::utils::json_ms(data.get("timestamp")),
         exchange: Exchange::Cex(CexExchange::Kucoin),
     })
 }

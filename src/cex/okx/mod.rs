@@ -102,6 +102,7 @@ impl CEXTrait for OKX {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::OKX),
         })
     }
@@ -289,6 +290,7 @@ fn parse_okx_books5(item: &serde_json::Value, arg_inst: Option<&str>) -> Option<
         bid_qty,
         ask_qty,
         timestamp: get_timestamp_millis(),
+        exchange_timestamp: crate::common::utils::json_ms(item.get("ts")),
         exchange: Exchange::Cex(CexExchange::OKX),
     })
 }

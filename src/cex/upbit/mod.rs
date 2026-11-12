@@ -138,6 +138,7 @@ impl CEXTrait for Upbit {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Upbit),
         })
     }
@@ -258,6 +259,7 @@ fn parse_upbit_orderbook(value: &serde_json::Value) -> Option<CexPrice> {
         bid_qty: bid_size,
         ask_qty: ask_size,
         timestamp: get_timestamp_millis(),
+        exchange_timestamp: crate::common::utils::json_ms(value.get("timestamp")),
         exchange: Exchange::Cex(CexExchange::Upbit),
     })
 }

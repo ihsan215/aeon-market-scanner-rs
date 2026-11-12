@@ -77,6 +77,7 @@ impl CEXTrait for Binance {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Binance),
         })
     }
@@ -208,6 +209,7 @@ impl CEXTrait for Binance {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: None,
                         exchange: Exchange::Cex(CexExchange::Binance),
                     };
                     if tx.send(price).await.is_err() {

@@ -9,8 +9,15 @@ pub struct CexPrice {
     pub ask_price: f64,
     pub bid_qty: f64,
     pub ask_qty: f64,
+    /// Local receive time (ms since epoch): when this library parsed the message.
     pub timestamp: u64,
     pub exchange: Exchange,
+    /// Event time reported by the exchange itself (ms since epoch), when the venue provides one.
+    /// Compare with `timestamp` to measure exchange → client latency or to spot lagging feeds.
+    /// `None` for feeds without an event time (Binance bookTicker, Bitfinex ticker,
+    /// Gate v3 depth, BtcTurk, HTX) and for REST prices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exchange_timestamp: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

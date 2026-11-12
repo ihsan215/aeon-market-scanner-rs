@@ -171,6 +171,7 @@ impl CEXTrait for Kraken {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Kraken),
         })
     }
@@ -363,6 +364,10 @@ impl CEXTrait for Kraken {
                             bid_qty,
                             ask_qty,
                             timestamp: get_timestamp_millis(),
+                            exchange_timestamp: data
+                                .get("timestamp")
+                                .and_then(|v| v.as_str())
+                                .and_then(crate::common::utils::iso8601_ms),
                             exchange: Exchange::Cex(CexExchange::Kraken),
                         };
                         if tx.send(price).await.is_err() {

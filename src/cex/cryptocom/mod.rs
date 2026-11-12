@@ -132,6 +132,7 @@ impl CEXTrait for Cryptocom {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Cryptocom),
         })
     }
@@ -358,6 +359,7 @@ impl CEXTrait for Cryptocom {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: crate::common::utils::json_ms(item.get("t")),
                         exchange: Exchange::Cex(CexExchange::Cryptocom),
                     };
                     if tx.send(price).await.is_err() {

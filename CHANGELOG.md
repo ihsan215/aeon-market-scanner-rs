@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-12
+
+### Added
+
+- **`CexPrice.exchange_timestamp: Option<u64>`**: the event time reported by the exchange itself, in ms since epoch. It is filled for WebSocket prices from 9 venues:
+
+  | Venue | Source field |
+  |---|---|
+  | Bybit | `cts`, falling back to `ts` |
+  | OKX | `ts` |
+  | KuCoin | `timestamp` |
+  | Bitget | `ts` |
+  | Coinbase | `time`, RFC 3339 |
+  | Kraken | `timestamp`, RFC 3339 |
+  | Upbit | `timestamp` |
+  | Crypto.com | `t` |
+  | MEXC | `createTime`, falling back to `sendTime` |
+
+  - Compare it with `timestamp` (local receive time) to measure exchange → client latency or to detect lagging feeds, e.g. before acting on a cross-exchange spread.
+  - It is `None` for feeds without an event time (Binance bookTicker, Bitfinex ticker, Gate v3 depth, BtcTurk, HTX) and for REST prices.
+  - It is omitted from JSON when `None`, and old payloads without it still deserialize.
+- `common::utils::json_ms()` and `common::utils::iso8601_ms()` helpers for parsing exchange timestamps.
+- Tests:
+  - Unit tests for timestamp parsing (number/string, s/ms/µs/ns, RFC 3339).
+  - Live tests in `tests/exchange_timestamp_test.rs`.
+
+### Changed (breaking)
+
+- `CexPrice` has a new public field. Code that builds `CexPrice` with a struct literal must add `exchange_timestamp: None` (or a value). Code that only reads prices is unaffected.
+- `CexPrice.timestamp` is unchanged and is now documented as the local receive time.
+
 ## [0.8.0] - 2026-11-12
 
 ### Fixed

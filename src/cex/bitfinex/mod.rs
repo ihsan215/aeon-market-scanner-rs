@@ -162,6 +162,7 @@ impl CEXTrait for Bitfinex {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Bitfinex),
         })
     }
@@ -286,6 +287,7 @@ impl CEXTrait for Bitfinex {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: None,
                         exchange: Exchange::Cex(CexExchange::Bitfinex),
                     };
                     if tx.send(price).await.is_err() {

@@ -15,6 +15,7 @@ fn fee_overrides_change_effective_prices_and_commission_percents() {
         ask_qty: 1.0,
         timestamp: 1,
         exchange: Exchange::Cex(CexExchange::Binance),
+        exchange_timestamp: None,
     };
 
     let sell = CexPrice {
@@ -26,6 +27,7 @@ fn fee_overrides_change_effective_prices_and_commission_percents() {
         ask_qty: 1.0,
         timestamp: 1,
         exchange: Exchange::Cex(CexExchange::OKX),
+        exchange_timestamp: None,
     };
 
     let base_opps =

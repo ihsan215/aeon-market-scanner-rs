@@ -34,4 +34,10 @@ pub struct BybitOrderbookWsMessage {
     #[serde(rename = "type")]
     pub msg_type: String,
     pub data: BybitOrderbookSnapshot,
+    /// System time the message was generated (ms).
+    #[serde(default)]
+    pub ts: Option<u64>,
+    /// Matching-engine time of this order-book state (ms).
+    #[serde(default)]
+    pub cts: Option<u64>,
 }

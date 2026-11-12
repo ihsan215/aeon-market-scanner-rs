@@ -46,7 +46,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.8"
+aeon-market-scanner-rs = "0.9"
 tokio = { version = "1", features = ["full"] }
 ```
 

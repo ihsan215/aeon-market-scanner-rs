@@ -106,6 +106,7 @@ impl CEXTrait for Bybit {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Bybit),
         })
     }
@@ -223,6 +224,7 @@ impl CEXTrait for Bybit {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: parsed.cts.or(parsed.ts),
                         exchange: Exchange::Cex(CexExchange::Bybit),
                     };
                     if tx.send(price).await.is_err() {

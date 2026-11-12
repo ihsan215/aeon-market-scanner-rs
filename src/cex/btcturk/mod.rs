@@ -121,6 +121,7 @@ impl CEXTrait for Btcturk {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Btcturk),
         })
     }

@@ -20,6 +20,7 @@ fn test_find_opportunities_mock_data() {
             ask_qty: 10.0,
             timestamp: 1600000000,
             exchange: Exchange::Cex(CexExchange::Binance),
+            exchange_timestamp: None,
         },
         CexPrice {
             symbol: symbol.clone(),
@@ -30,6 +31,7 @@ fn test_find_opportunities_mock_data() {
             ask_qty: 5.0,
             timestamp: 1600000000,
             exchange: Exchange::Cex(CexExchange::OKX),
+            exchange_timestamp: None,
         },
     ];
 

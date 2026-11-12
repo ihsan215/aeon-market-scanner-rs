@@ -123,6 +123,7 @@ impl CEXTrait for Mexc {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::MEXC),
         })
     }
@@ -276,6 +277,11 @@ fn parse_mexc_protobuf(bytes: &[u8]) -> Option<CexPrice> {
         bid_qty: parse_f64(&ticker.bid_quantity, "bid_qty").unwrap_or(0.0),
         ask_qty: parse_f64(&ticker.ask_quantity, "ask_qty").unwrap_or(0.0),
         timestamp: get_timestamp_millis(),
+        exchange_timestamp: wrapper
+            .create_time
+            .or(wrapper.send_time)
+            .filter(|t| *t > 0)
+            .map(|t| t as u64),
         exchange: Exchange::Cex(CexExchange::MEXC),
     })
 }

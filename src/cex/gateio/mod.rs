@@ -91,6 +91,7 @@ impl CEXTrait for Gateio {
             bid_qty,
             ask_qty,
             timestamp: get_timestamp_millis(),
+            exchange_timestamp: None,
             exchange: Exchange::Cex(CexExchange::Gateio),
         })
     }
@@ -230,6 +231,7 @@ impl CEXTrait for Gateio {
                         bid_qty,
                         ask_qty,
                         timestamp: get_timestamp_millis(),
+                        exchange_timestamp: None,
                         exchange: Exchange::Cex(CexExchange::Gateio),
                     };
                     if tx.send(price).await.is_err() {
