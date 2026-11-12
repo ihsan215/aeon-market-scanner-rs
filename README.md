@@ -9,8 +9,24 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets` with `ScannerEvent` stream)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
 
-> **Crate:** [crates.io/crates/aeon-market-scanner-rs](https://crates.io/crates/aeon-market-scanner-rs) · **Docs:** [docs.rs/aeon-market-scanner-rs](https://docs.rs/aeon-market-scanner-rs)  
+> **Crate:** [crates.io/crates/aeon-market-scanner-rs](https://crates.io/crates/aeon-market-scanner-rs) · **Docs:** [docs.rs/aeon-market-scanner-rs](https://docs.rs/aeon-market-scanner-rs) · **Live demo:** [aeonfeed.com](https://aeonfeed.com)  
 > Import: `aeon_market_scanner_rs`
+
+## Live demo: Aeon Feed (free real-time crypto price API)
+
+[**Aeon Feed**](https://aeonfeed.com) is built on this crate. It streams live top-of-book prices for the top 100 USDT pairs from the 12 WebSocket exchanges above, normalised into one format. It is free and public, with no API key or signup.
+
+- **Live markets:** [aeonfeed.com/markets](https://aeonfeed.com/markets). Best bid/ask, order sizes, cross-exchange spread and per-exchange lag, e.g. [BTC/USDT across 12 exchanges](https://aeonfeed.com/markets/btc-usdt).
+- **WebSocket:** `wss://aeonfeed.com/ws`. Per-pair tickers are real-time; cross-exchange aggregates arrive every second. [Docs](https://aeonfeed.com/docs).
+- **Exchange formats:** each exchange's native message next to the normalised result, e.g. [Binance](https://aeonfeed.com/exchanges/binance) or [OKX](https://aeonfeed.com/exchanges/okx).
+
+```js
+// No API key needed
+const ws = new WebSocket("wss://aeonfeed.com/ws?subscribe=ticker:BTCUSDT");
+ws.onmessage = (e) => console.log(JSON.parse(e.data)); // { type: "ticker", data: [{ ex, b, a, bq, aq, t, et }] }
+```
+
+If you want these streams inside your own Rust service, without a third-party server, use this crate directly (see below).
 
 ## Supported exchanges
 
