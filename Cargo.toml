@@ -24,6 +24,16 @@ include = [
     "CHANGELOG.md",
 ]
 
+[package.metadata.docs.rs]
+# Document the opt-in providers (YahooFiat, YahooStocks) too.
+all-features = true
+
+[features]
+default = []
+# Yahoo Finance fiat rates and stock prices (`YahooFiat`, `YahooStocks`). Off by default: it uses an undocumented
+# Yahoo endpoint that Yahoo's terms do not allow for automated access and may block or change.
+unofficial-yahoo = []
+
 [dependencies]
 reqwest = { version = "0.12.28", features = ["json"] }
 thiserror = "2.0.17"

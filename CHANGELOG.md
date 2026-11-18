@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- New modules for stocks and fiat currencies, separate from `cex` and `dex`. Each provider has its own folder and implements a shared trait, so more providers can be added later.
+- **`stocks` module: US stock prices.**
+  - The `StockTrait` trait defines `get_price`, `get_prices` and `get_sp500_prices`.
+    - Every provider's `get_prices` returns one entry per distinct ticker, in input order.
+    - It drops malformed and unknown tickers instead of failing the batch, and returns other errors, such as a rate limit.
+    - Alpaca splits a rejected batch to isolate the bad ticker.
+    - The default implementation keeps 5 requests in flight.
+  - Each result is a `StockPrice`:
+    - `price` is always set. It is the bid/ask midpoint when the provider has a quote, otherwise the last trade.
+    - `bid_price`, `ask_price`, `bid_qty`, `ask_qty` and `last_price` are optional.
+    - `exchange_timestamp` is the quote or trade time.
+  - Providers:
+    - `Alpaca` uses `/v2/stocks/snapshots` on the free IEX feed.
+      - Credentials: `ALPACA_API_KEY_ID` and `ALPACA_API_SECRET_KEY`.
+      - It sends up to 200 tickers per request.
+      - `price` is the bid/ask midpoint when the quote is not crossed and at most 2% wide (`with_max_spread`, default `stocks::DEFAULT_MAX_SPREAD`). Otherwise it is the latest trade, and failing that the daily close.
+      - A daily-close fallback is stamped with the 16:00 New York session close, not the bar's midnight start.
+      - So all S&P 500 tickers get a price even when the market is closed.
+      - `AlpacaFeed` selects the feed: `Iex`, `Sip` or `DelayedSip`.
+    - `Tiingo` uses the IEX endpoint (`TIINGO_API_TOKEN`).
+      - It sends up to 100 tickers per request.
+      - It returns the last price. Bid/ask come only with an IEX data agreement, and then pass the same crossed and spread check (`with_max_spread`).
+    - `Finnhub` uses `/quote` (`FINNHUB_API_KEY`). It returns the last price, one request per ticker.
+    - `YahooStocks` returns the last price. It needs no key and sits behind the opt-in `unofficial-yahoo` feature.
+  - `SP500_SYMBOLS` lists the 503 S&P 500 constituents as of 2026-11-18, taken from Wikipedia.
+  - `normalize_stock_symbol` helper: `brk-b` → `BRK.B`.
+- **`fiat` module: fiat exchange rates.**
+  - The `FiatTrait` trait defines `get_rate` and `get_rates`.
+  - `fiat::frankfurter::Frankfurter` is the first provider. It serves ECB reference rates and needs no API key.
+    - `get_rates` sends one request per base currency and keeps input order.
+    - It also has `get_all_rates(base)` and `supported_currencies()`.
+  - Each result is a `FiatRate`. Its `bid`, `ask` and `exchange_timestamp` fields are optional and filled when the provider publishes them.
+  - `fiat::exchangerate_api::ExchangeRateApi` serves the open access endpoint of ExchangeRate-API. It needs no API key.
+    - It covers 160+ currencies and updates daily.
+    - It has `get_all_rates(base)`.
+    - Its terms require attribution and forbid redistribution.
+    - It caches each table for 1 hour (`with_cache_ttl`), so it stays within the provider's hourly polling guidance.
+    - An unknown currency maps to `InvalidSymbol` whatever the HTTP status, and HTTP 429 gets a clear rate-limit error.
+  - `fiat::tcmb::Tcmb` serves the indicative rates of the Central Bank of the Republic of Türkiye. It needs no API key.
+    - It covers about 20 currencies against TRY, with forex buying/selling prices returned as `bid` / `ask`.
+    - Cross pairs such as `EUR/USD` are computed through TRY.
+    - JPY is normalised from its 100-unit quote.
+    - It has `get_all_rates()`.
+    - It caches the bulletin for 15 minutes (`with_cache_ttl`).
+  - `fiat::tiingo::TiingoFiat` serves Tiingo FX real-time top-of-book quotes, using the same `TIINGO_API_TOKEN` as the stock provider.
+    - It covers about 140 pairs, with bid/ask and the quote time.
+    - It fetches many pairs per request.
+    - Pairs listed only the other way round (`TRY/USD`) are fetched and inverted.
+  - `fiat::yahoo::YahooFiat` serves near-live Yahoo Finance rates for practically all pairs. It sits behind the opt-in **`unofficial-yahoo`** Cargo feature, which is off by default.
+    - It uses an undocumented endpoint that Yahoo's terms do not permit for automated access, so it may rate limit or break.
+    - It returns the last price only; `exchange_timestamp` is the time of that price.
+    - It keeps at most 4 requests in flight.
+    - Any "not found" answer (404, or a chart error) is treated as an unknown symbol, so one odd ticker does not abort a batch.
+  - docs.rs builds with all features, so the opt-in Yahoo providers are documented.
+  - `parse_fiat_pair` and `parse_currency_code` helpers: `EUR/USD`, `EURUSD` and `eur-usd` all parse to `(EUR, USD)`.
+- **Fallback chains: `StockFallback` and `FiatFallback`.**
+  - They try providers in order and return, per symbol, the first live price. Live means `exchange_timestamp` is within `with_max_age`, 15 minutes by default.
+  - On an error, an unknown symbol or a stale price, the next provider is asked, and only for the symbols still missing. If no provider has a live price, the first stale one is returned.
+  - Both implement `StockTrait` / `FiatTrait`, so single and batch calls work.
+  - Build a chain with `new(..).then(..)`, or with `from_env()` to use every provider that has credentials.
+  - Stock chains apply the age limit only during the US regular session, adjusted for DST (`with_age_limit_in_session_only`). This avoids spending fallback quotas while the market is closed.
+  - `FiatFallback` retries a provider's pairs one by one when its batch call fails, so one uncovered pair does not hide the others.
+  - `examples/fallback.rs` shows both chains: `cargo run --example fallback`.
+- Tests:
+  - Unit tests for parsing.
+  - Live tests in `tests/fiat_frankfurter_test.rs`, `tests/fiat_exchangerate_api_test.rs`, `tests/fiat_tcmb_test.rs`, `tests/fiat_tiingo_test.rs`, `tests/fiat_yahoo_test.rs` and `tests/stocks_yahoo_test.rs`. The Yahoo tests run only with `--features unofficial-yahoo`.
+  - `tests/stocks_alpaca_test.rs`, `tests/stocks_finnhub_tiingo_test.rs` and `tests/fallback_test.rs`. Each test is skipped when its provider's key is not set.
+
 ## [0.9.1] - 2026-11-12
 
 ### Changed

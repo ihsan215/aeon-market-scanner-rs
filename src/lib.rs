@@ -1,6 +1,7 @@
 //! `aeon-market-scanner-rs`
 //!
 //! Fetch spot prices from multiple CEX/DEX venues and scan for arbitrage opportunities.
+//! Separate modules fetch US stock prices ([`stocks`]) and fiat exchange rates ([`fiat`]).
 //!
 //! ## Quickstart (REST)
 //!
@@ -36,7 +37,9 @@
 pub mod cex;
 pub mod common;
 pub mod dex;
+pub mod fiat;
 pub mod scanner;
+pub mod stocks;
 
 // Re-export common types
 pub use cex::{
@@ -55,3 +58,15 @@ pub use dex::{
     Token, stream_pool_prices,
 };
 pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};
+
+#[cfg(feature = "unofficial-yahoo")]
+pub use fiat::YahooFiat;
+pub use fiat::{
+    ExchangeRateApi, FiatFallback, FiatProvider, FiatRate, FiatTrait, Frankfurter, Tcmb, TiingoFiat,
+};
+#[cfg(feature = "unofficial-yahoo")]
+pub use stocks::YahooStocks;
+pub use stocks::{
+    Alpaca, AlpacaFeed, Finnhub, SP500_SYMBOLS, StockFallback, StockPrice, StockProvider,
+    StockTrait, Tiingo,
+};

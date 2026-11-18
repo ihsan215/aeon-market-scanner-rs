@@ -4,6 +4,8 @@ pub mod errors;
 pub mod exchange;
 pub mod price;
 pub mod utils;
+#[cfg(feature = "unofficial-yahoo")]
+pub(crate) mod yahoo;
 
 // Re-export
 pub use client::create_http_client;
