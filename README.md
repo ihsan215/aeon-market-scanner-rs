@@ -56,6 +56,24 @@ If you want these streams inside your own Rust service, without a third-party se
 | KyberSwap                | supported | not supported | Aggregator; chains: `ethereum`, `bsc`, `polygon`, `avalanche`, `arbitrum`, `optimism`, `base`, `linea`, `mantle`, `plasma`, `unichain`, `sonic`, `ronin`, `hyprevm` |
 | Pool listener (V2/V3/V4) |       n/a |     supported | Single-pool swap-event stream over WebSocket RPC; V2/V3 (pool address), V4/V4Pancake (PoolManager + pool id); any EVM chain                                         |
 
+### Stocks and fiat currencies (separate modules)
+
+These live outside `cex` / `dex`, have their own price types, and are not part of the arbitrage scanner. Each provider has its own folder (`src/stocks/<provider>/`, `src/fiat/<provider>/`) and implements `StockTrait` / `FiatTrait`, so more providers can be added later.
+
+| Module   | Provider                   | API key            | Data                                                                                |
+| -------- | -------------------------- | ------------------ | ----------------------------------------------------------------------------------- |
+| `stocks` | Alpaca                     | yes (free account) | Snapshots: bid/ask quote (IEX), last trade, daily close; 200 tickers per request    |
+| `stocks` | Tiingo                     | yes (free token)   | Last price (bid/ask only with an IEX data agreement); 100 tickers per request       |
+| `stocks` | Finnhub                    | yes (free key)     | Last price; one request per ticker, ~60/min on the free plan                        |
+| `stocks` | Yahoo (opt-in, unofficial) | no                 | Last price; feature `unofficial-yahoo`                                              |
+| `fiat`   | Frankfurter                | no                 | ECB reference rates (~30 currencies, e.g. EUR/USD, USD/TRY), updated daily           |
+| `fiat`   | ExchangeRate-API           | no                 | 160+ currencies, updated daily (attribution required, no redistribution)             |
+| `fiat`   | TCMB                       | no                 | ~20 currencies vs TRY with buying/selling (bid/ask), crosses via TRY, working days   |
+| `fiat`   | Tiingo FX                  | yes (free token)   | **Real-time** bid/ask for ~140 pairs, many pairs per request (shares the Tiingo quota) |
+| `fiat`   | Yahoo (opt-in, unofficial) | no                 | Near-live rates for practically all pairs; feature `unofficial-yahoo`                |
+
+`SP500_SYMBOLS` lists the S&P 500 tickers. `StockPrice.price` is always set (bid/ask midpoint when the provider has a quote, otherwise the last trade); `bid_price`, `ask_price`, `last_price` are filled when the provider publishes them.
+
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -91,6 +109,55 @@ async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
     Ok(())
 }
 ```
+
+## Stocks (S&P 500) and fiat exchange rates
+
+```rust,no_run
+use aeon_market_scanner_rs::{Alpaca, FiatTrait, Frankfurter, StockTrait};
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    // Fiat rates: no API key. Accepts "EUR/USD", "EURUSD", "eur-usd".
+    let fx = Frankfurter::new();
+    for rate in fx.get_rates(&["EUR/USD", "GBP/USD", "USD/TRY"]).await? {
+        println!("{} = {} ({})", rate.pair, rate.rate, rate.date);
+    }
+
+    // US stocks: needs ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY.
+    let _ = dotenvy::dotenv();
+    let stocks = Alpaca::from_env()?;
+    let aapl = stocks.get_price("AAPL").await?;
+    println!("{} price={} bid={:?} ask={:?}", aapl.symbol, aapl.price, aapl.bid_price, aapl.ask_price);
+
+    // All S&P 500 constituents, batched into a few requests.
+    let sp500 = stocks.get_sp500_prices().await?;
+    println!("{} quotes", sp500.len());
+
+    Ok(())
+}
+```
+
+- Keys are read from the environment by each provider's `from_env()`: `ALPACA_API_KEY_ID` + `ALPACA_API_SECRET_KEY`, `TIINGO_API_TOKEN`, `FINNHUB_API_KEY`.
+- Free-plan caveats: Tiingo Starter allows 500 unique symbols per month (the S&P 500 has 503); Finnhub has no batch endpoint, so long lists hit its per-minute limit; `YahooStocks` / `YahooFiat` use an undocumented endpoint (see below).
+- Alpaca uses the free IEX feed by default; call `.with_feed(AlpacaFeed::Sip)` if you have the paid subscription. `price` is the bid/ask midpoint when the quote is present and at most 2% wide (`.with_max_spread(..)`), otherwise the last trade, otherwise the daily close. Outside US market hours IEX often has no usable quote, so most tickers then come from the last trade, with `bid_price` / `ask_price` left empty.
+- Frankfurter, ExchangeRate-API and TCMB serve daily reference rates, not live prices; `FiatRate.date` tells you which day they are from.
+- For real-time rates use `TiingoFiat::from_env()?` (same `TIINGO_API_TOKEN` as the stock provider): `get_rates(&["EUR/USD", "USD/TRY"])` returns interbank bid/ask, usually seconds old, in one request. Pairs Tiingo lists the other way round (`TRY/USD`) are inverted automatically. The free plan's 50 requests/hour and 500 symbols/month are shared with Tiingo stock requests.
+- Near-live fiat rates (usually under a minute old) and stock prices are available from Yahoo Finance behind an opt-in feature:
+
+  ```toml
+  aeon-market-scanner-rs = { version = "0.9", features = ["unofficial-yahoo"] }
+  ```
+
+  ```rust,ignore
+  use aeon_market_scanner_rs::{FiatTrait, StockTrait, YahooFiat, YahooStocks};
+  let rate = YahooFiat::new().get_rate("USD/TRY").await?; // rate.exchange_timestamp = time of the price
+  let aapl = YahooStocks::new().get_price("AAPL").await?;
+  ```
+
+  This uses an **undocumented** Yahoo endpoint: Yahoo's terms do not allow automated access, and it can rate limit (HTTP 429), block or change at any time. It returns the last price only (no bid/ask). Use it for personal use and prototypes, and do not re-publish the data.
+- Same `FiatTrait` API for every provider: `ExchangeRateApi::new()` covers 160+ currencies, `Tcmb::new()` adds `bid` / `ask` (TCMB buying/selling) for TRY pairs and crosses like `EUR/USD`.
+- ExchangeRate-API caches each table for 1 hour and TCMB its bulletin for 15 minutes (`.with_cache_ttl(..)`, `Duration::ZERO` turns it off), since the data changes once per day.
+- ExchangeRate-API's open access terms require attribution ("Rates By Exchange Rate API" linking to exchangerate-api.com), forbid redistributing the data, and rate-limit callers polling more often than about once per hour.
 
 ## MEXC: balances, orders, private order stream (signed API)
 
@@ -434,7 +501,7 @@ println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
 
 ## Notes / caveats
 
-- **Public APIs**: default CEX usage (`get_price`, public WebSockets, arbitrage scanner) uses **public** endpoints only — **no API keys** for those paths. **MEXC signed features** (`Mexc::with_credentials`, balances, trading, private order stream) require keys you supply in code. Usage is subject to each provider’s rate limits and terms.
+- **Public APIs**: default CEX usage (`get_price`, public WebSockets, arbitrage scanner) uses **public** endpoints only — **no API keys** for those paths. **MEXC signed features** (`Mexc::with_credentials`, balances, trading, private order stream) require keys you supply in code. **Alpaca stock prices** (`stocks`) also require keys. Usage is subject to each provider’s rate limits and terms.
 - **Network + rate limits**: exchange APIs can rate-limit or temporarily fail; callers should expect errors.
 - **Symbols**: most examples use common `BASEQUOTE` format like `BTCUSDT`. Some exchanges may require different formatting internally; the crate normalizes per-exchange.
 - **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if `reconnect_attempts` > 0).
