@@ -81,14 +81,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.10"
+aeon-market-scanner-rs = "0.11"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.10.2"
+aeon-market-scanner-rs = "0.11.0"
 ```
 
 Then run `cargo build`.
@@ -239,14 +239,16 @@ Symbols are normalised: `brk-b`, `BRK/B` and `BRK.B` are the same ticker, and `E
 - **Tiingo**: official last price, 100 tickers per request. The Starter plan's 500 symbols/month is less than the S&P 500's 503 tickers.
 - **Finnhub**: official last price; one request per ticker, so it is best for short lists.
 - **Tiingo FX**: interbank bid/ask, usually seconds old, for about 140 pairs in one request. Pairs listed only the other way round (`TRY/USD` from `USD/TRY`) are inverted automatically.
-- **ExchangeRate-API**: 165 currencies, daily. The table is cached for 1 hour (`.with_cache_ttl(..)`). Its terms require the attribution "Rates By Exchange Rate API" linking to exchangerate-api.com, and forbid redistributing the data.
+- **ExchangeRate-API**: 165 currencies, daily. Polling more often than about once per hour gets your IP blocked (HTTP 429) for 20 minutes. Its terms require the attribution "Rates By Exchange Rate API" linking to exchangerate-api.com, and forbid redistributing the data.
 - **Frankfurter**: ECB reference rates for about 30 currencies, updated on working days around 16:00 CET.
-- **TCMB**: the Turkish central bank's daily indicative rates for about 20 currencies against TRY, with buying/selling prices. Crosses such as `EUR/USD` are computed through TRY. The bulletin is cached for 15 minutes.
+- **TCMB**: the Turkish central bank's daily indicative rates for about 20 currencies against TRY, with buying/selling prices. Crosses such as `EUR/USD` are computed through TRY.
 - **Yahoo** (`YahooStocks`, `YahooFiat`): no key and near-live, but it uses an **undocumented** endpoint that Yahoo's terms do not permit for automated access, and it can rate limit or break without notice. It is therefore behind an opt-in feature:
 
   ```toml
-  aeon-market-scanner-rs = { version = "0.10", features = ["unofficial-yahoo"] }
+  aeon-market-scanner-rs = { version = "0.11", features = ["unofficial-yahoo"] }
   ```
+
+> **Caching:** the crate does not cache. Every call goes to the provider. Daily sources (ExchangeRate-API, Frankfurter, TCMB) change once per day and some rate-limit heavy polling, so keep the results on your side (in memory, Redis, a database) and refresh them hourly or so.
 
 > **Licensing:** free plans are for personal or internal use. Showing their data on a public website counts as redistribution and usually needs a commercial plan, and for stocks often exchange display licences. See [Disclaimer](#disclaimer) for each provider's terms.
 

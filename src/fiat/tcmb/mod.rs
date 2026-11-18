@@ -1,20 +1,12 @@
 mod types;
 
-use std::sync::Arc;
-use std::time::Duration;
-
 use async_trait::async_trait;
 
 use crate::common::{MarketScannerError, create_http_client, find_mid_price, get_timestamp_millis};
-use crate::fiat::cache::TtlCache;
 use crate::fiat::tcmb::types::{TcmbBulletin, TcmbCurrency};
 use crate::fiat::{FiatProvider, FiatRate, FiatTrait, parse_fiat_pair};
 
 const TCMB_TODAY_URL: &str = "https://www.tcmb.gov.tr/kurlar/today.xml";
-
-/// Default for [`Tcmb::with_cache_ttl`]. The bulletin changes once per working day; a short
-/// TTL still picks up the new one soon after it is published.
-pub const TCMB_DEFAULT_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
 
 /// Indicative exchange rates of the Central Bank of the Republic of Türkiye (TCMB).
 /// No API key needed.
@@ -26,11 +18,10 @@ pub const TCMB_DEFAULT_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
 ///   returns as [`FiatRate::bid`] / [`FiatRate::ask`] ("forex" prices, not banknote prices).
 /// - Any pair of listed currencies works: `USD/TRY`, `TRY/EUR`, and crosses such as
 ///   `EUR/USD`, computed through TRY.
-/// - The downloaded bulletin is reused for 15 minutes ([`with_cache_ttl`](Self::with_cache_ttl));
-///   [`FiatRate::timestamp`] is when it was downloaded.
+/// - Every call downloads the bulletin; it changes once per working day, so cache the results
+///   on your side. [`FiatRate::timestamp`] is when it was downloaded.
 pub struct Tcmb {
     client: reqwest::Client,
-    cache: TtlCache<TcmbBulletin>,
 }
 
 impl Default for Tcmb {
@@ -43,15 +34,7 @@ impl Tcmb {
     pub fn new() -> Self {
         Self {
             client: create_http_client(),
-            cache: TtlCache::new(TCMB_DEFAULT_CACHE_TTL),
         }
-    }
-
-    /// How long a downloaded bulletin is reused (default 15 minutes). `Duration::ZERO`
-    /// disables the cache.
-    pub fn with_cache_ttl(mut self, ttl: Duration) -> Self {
-        self.cache.set_ttl(ttl);
-        self
     }
 
     /// Every currency in the latest bulletin quoted against TRY (`USD/TRY`, `EUR/TRY`, ...).
@@ -64,11 +47,7 @@ impl Tcmb {
             .collect())
     }
 
-    async fn fetch_bulletin(&self) -> Result<Arc<TcmbBulletin>, MarketScannerError> {
-        const KEY: &str = "today";
-        if let Some(cached) = self.cache.get(KEY) {
-            return Ok(cached);
-        }
+    async fn fetch_bulletin(&self) -> Result<TcmbBulletin, MarketScannerError> {
         let response = self.client.get(TCMB_TODAY_URL).send().await?;
         let status = response.status();
         if !status.is_success() {
@@ -78,8 +57,7 @@ impl Tcmb {
                 body.chars().take(200).collect::<String>()
             )));
         }
-        let bulletin = parse_bulletin(&response.text().await?)?;
-        Ok(self.cache.insert(KEY.to_string(), bulletin))
+        parse_bulletin(&response.text().await?)
     }
 }
 

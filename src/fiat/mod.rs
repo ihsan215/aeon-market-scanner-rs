@@ -18,7 +18,6 @@
 //! [`TiingoFiat`] is real time with bid/ask and needs a free Tiingo token. `YahooFiat` needs no
 //! key and is near-live, but uses an undocumented endpoint, so it is opt-in; see its docs.
 
-mod cache;
 pub mod exchangerate_api;
 mod fallback;
 pub mod frankfurter;

@@ -1,20 +1,12 @@
 mod types;
 
-use std::sync::Arc;
-use std::time::Duration;
-
 use async_trait::async_trait;
 
 use crate::common::{MarketScannerError, create_http_client, get_timestamp_millis};
-use crate::fiat::cache::TtlCache;
 use crate::fiat::exchangerate_api::types::ErApiLatestResponse;
 use crate::fiat::{FiatProvider, FiatRate, FiatTrait, parse_currency_code, parse_fiat_pair};
 
 const ER_API_BASE: &str = "https://open.er-api.com/v6";
-
-/// Default for [`ExchangeRateApi::with_cache_ttl`]: the provider says hourly polling is never
-/// rate limited, and the data only changes once per day.
-pub const ER_API_DEFAULT_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// Fiat exchange rates from the [ExchangeRate-API](https://www.exchangerate-api.com/docs/free)
 /// open access endpoint: 160+ currencies, no API key.
@@ -23,13 +15,12 @@ pub const ER_API_DEFAULT_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 /// - Attribution is required on pages that use the rates:
 ///   `<a href="https://www.exchangerate-api.com">Rates By Exchange Rate API</a>`.
 /// - Requesting once per hour never gets rate limited; heavier callers get HTTP 429 for
-///   20 minutes. This provider therefore caches each base currency's table for 1 hour
-///   ([`with_cache_ttl`](Self::with_cache_ttl)); [`FiatRate::timestamp`] is when the table was
-///   downloaded.
+///   20 minutes. Every call downloads the base currency's table, so **cache the results on
+///   your side** (the data only changes once per day) rather than calling in a loop.
+///   [`FiatRate::timestamp`] is when the table was downloaded.
 /// - Personal and commercial use is allowed; re-distributing the data is not.
 pub struct ExchangeRateApi {
     client: reqwest::Client,
-    cache: TtlCache<ErApiLatestResponse>,
 }
 
 impl Default for ExchangeRateApi {
@@ -42,15 +33,7 @@ impl ExchangeRateApi {
     pub fn new() -> Self {
         Self {
             client: create_http_client(),
-            cache: TtlCache::new(ER_API_DEFAULT_CACHE_TTL),
         }
-    }
-
-    /// How long a downloaded table is reused (default 1 hour). `Duration::ZERO` disables the
-    /// cache; polling more often than hourly risks a 20-minute HTTP 429 block.
-    pub fn with_cache_ttl(mut self, ttl: Duration) -> Self {
-        self.cache.set_ttl(ttl);
-        self
     }
 
     /// Every rate available against `base` (160+ currencies), sorted by quote code.
@@ -65,14 +48,7 @@ impl ExchangeRateApi {
             .collect())
     }
 
-    async fn fetch_latest(
-        &self,
-        base: &str,
-    ) -> Result<Arc<ErApiLatestResponse>, MarketScannerError> {
-        if let Some(cached) = self.cache.get(base) {
-            return Ok(cached);
-        }
-
+    async fn fetch_latest(&self, base: &str) -> Result<ErApiLatestResponse, MarketScannerError> {
         let url = format!("{ER_API_BASE}/latest/{base}");
         let response = self.client.get(&url).send().await?;
         let status = response.status();
@@ -106,7 +82,7 @@ impl ExchangeRateApi {
             MarketScannerError::ApiError("ExchangeRate-API: could not parse response".to_string())
         })?;
         body.fetched_at = get_timestamp_millis();
-        Ok(self.cache.insert(base.to_string(), body))
+        Ok(body)
     }
 }
 

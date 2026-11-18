@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-18
+
+### Removed (breaking)
+
+- The built-in response cache is gone from `ExchangeRateApi` and `Tcmb`:
+  - `with_cache_ttl` is removed.
+  - The `ER_API_DEFAULT_CACHE_TTL` and `TCMB_DEFAULT_CACHE_TTL` constants are removed.
+  - Every call now goes to the provider, the same as every other provider in the crate.
+  - Caching is left to the caller, who knows where results should live (memory, Redis, a database) and how fresh they must be.
+  - Daily sources change once per day, and ExchangeRate-API blocks IPs that poll more than about hourly. So keep results on your side; the README now says so.
+
 ## [0.10.2] - 2026-11-18
 
 ### Changed
