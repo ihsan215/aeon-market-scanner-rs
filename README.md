@@ -8,7 +8,7 @@ A Rust crate for fetching **CEX** and **DEX** prices and finding **arbitrage opp
 - **DEX pool price listener**: Uniswap V2, V3, V4 and PancakeSwap Infinity (V4-style) pool prices over WebSocket RPC (`stream_pool_prices`); swap-event only, price from event params
 - Arbitrage scanning: one-shot REST (`scan_arbitrage_opportunities`) or live WebSocket (`scan_arbitrage_from_websockets` with `ScannerEvent` stream)
 - Fee overrides (VIP/custom tiers) and optional DEX legs (KyberSwap)
-- **US stocks** (S&P 500) and **fiat exchange rates** from several providers (Alpaca, Tiingo, Finnhub, Frankfurter, ExchangeRate-API, TCMB, Tiingo FX, optional Yahoo), with **fallback chains** that prefer live data and switch provider on errors
+- **Aggregated crypto prices** from CoinMarketCap (works without a key), **US stocks** (S&P 500) and **fiat exchange rates** from several providers (Alpaca, Tiingo, Finnhub, Frankfurter, ExchangeRate-API, TCMB, Tiingo FX, optional Yahoo), with **fallback chains** that prefer live data and switch provider on errors
 
 > **Crate:** [crates.io/crates/aeon-market-scanner-rs](https://crates.io/crates/aeon-market-scanner-rs) · **Docs:** [docs.rs/aeon-market-scanner-rs](https://docs.rs/aeon-market-scanner-rs) · **Live demo:** [aeonfeed.com](https://aeonfeed.com)  
 > Import: `aeon_market_scanner_rs`
@@ -70,6 +70,7 @@ If you want these streams inside your own Rust service, without a third-party se
 | `fiat`   | ExchangeRate-API             | no   | daily             | no      | per base currency    | ~1 request/hour, attribution required     |
 | `fiat`   | Frankfurter (ECB)            | no   | daily             | no      | per base currency    | –                                         |
 | `fiat`   | TCMB (Turkish central bank)  | no   | daily             | yes     | whole bulletin       | –                                         |
+| `market_data` | CoinMarketCap           | optional | 15–60 s (aggregated) | no | 100 symbols/request | keyless: small IP-based quota; free key: 15,000 credits/month, 50 req/min |
 
 ¹ Tiingo returns bid/ask only to accounts with an IEX market data agreement.
 
@@ -81,14 +82,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.11"
+aeon-market-scanner-rs = "0.12"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.11.0"
+aeon-market-scanner-rs = "0.12.0"
 ```
 
 Then run `cargo build`.
@@ -245,7 +246,7 @@ Symbols are normalised: `brk-b`, `BRK/B` and `BRK.B` are the same ticker, and `E
 - **Yahoo** (`YahooStocks`, `YahooFiat`): no key and near-live, but it uses an **undocumented** endpoint that Yahoo's terms do not permit for automated access, and it can rate limit or break without notice. It is therefore behind an opt-in feature:
 
   ```toml
-  aeon-market-scanner-rs = { version = "0.11", features = ["unofficial-yahoo"] }
+  aeon-market-scanner-rs = { version = "0.12", features = ["unofficial-yahoo"] }
   ```
 
 > **Caching:** the crate does not cache. Every call goes to the provider. Daily sources (ExchangeRate-API, Frankfurter, TCMB) change once per day and some rate-limit heavy polling, so keep the results on your side (in memory, Redis, a database) and refresh them hourly or so.
@@ -263,6 +264,36 @@ cargo test --test fallback_test -- --nocapture          # live tests; providers 
 ### Adding a provider
 
 Create `src/stocks/<provider>/` or `src/fiat/<provider>/`, add a variant to `StockProvider` / `FiatProvider`, and implement `StockTrait` / `FiatTrait`. Override `get_prices` / `get_rates` if the API has a batch endpoint. The new provider then works on its own and inside the fallback chains.
+
+## Aggregated crypto prices (CoinMarketCap)
+
+The `market_data` module returns **aggregated** crypto prices: volume-weighted across exchanges, with market cap, 24h volume, 24h change and rank. Use it for overviews and conversions. For a single exchange's live bid/ask, use the CEX providers above.
+
+```rust,no_run
+use aeon_market_scanner_rs::{CoinMarketCap, MarketDataTrait};
+
+#[tokio::main]
+async fn main() -> Result<(), aeon_market_scanner_rs::MarketScannerError> {
+    // Works without a key (keyless public API, shared IP rate pool).
+    // With CMC_API_KEY set (free at coinmarketcap.com/api), from_env() uses your own limits.
+    let cmc = CoinMarketCap::from_env();
+
+    let btc = cmc.get_price("BTC").await?;
+    println!("{} {} {} (rank {:?}, 24h {:?}%)", btc.name, btc.price, btc.quote, btc.rank, btc.percent_change_24h);
+
+    for p in cmc.get_prices(&["ETH", "SOL", "XRP"]).await? {
+        println!("{} {} mcap={:?}", p.symbol, p.price, p.market_cap);
+    }
+
+    let in_eur = CoinMarketCap::from_env().with_convert("EUR").get_prices_by_ids(&[1, 1027]).await?;
+    println!("{} prices in EUR", in_eur.len());
+    Ok(())
+}
+```
+
+- **Symbols are not unique** on CoinMarketCap; many tokens call themselves `BTC`. For each symbol the provider returns the active asset with the best market-cap rank, which is the well-known one. `get_prices_by_ids` (CoinMarketCap ids, `1` = Bitcoin) selects exact assets.
+- **Limits:** the keyless API has a small, IP-based anonymous quota. Once it is used up, calls fail with HTTP 429 (code 1022) until it resets, so use a free key for anything beyond occasional calls. The free key (Basic plan) gives 15,000 credits/month and 50 requests/minute, at 1 credit per 250 assets returned. Prices refresh every 15–60 seconds. **There is no WebSocket on the free plans**; it starts on paid plans.
+- **Licence:** per CoinMarketCap's pricing page, the free plan allows commercial use inside one product, but not redistributing the data as a standalone service or through your own API. The crate does not cache, so cache results on your side.
 
 ## MEXC: balances, orders, private order stream (signed API)
 
@@ -627,6 +658,7 @@ println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
   | Bybit | [API Terms & Conditions](https://www.bybit.com/en/help-center/article/API-Terms) |
   | Other exchanges (MEXC, Gate, KuCoin, Bitget, BtcTurk, HTX, Bitfinex, Upbit, Crypto.com) | the API / market data terms on each exchange's website |
   | KyberSwap | the KyberSwap aggregator API terms |
+  | CoinMarketCap | [API pricing & licence](https://coinmarketcap.com/api/pricing/) (no standalone redistribution) |
   | Alpaca | [alpaca.markets/disclosures](https://alpaca.markets/disclosures) |
   | Tiingo (stocks and FX) | [api.tiingo.com/documentation](https://api.tiingo.com/documentation) (usage and licensing section) |
   | Finnhub | [finnhub.io/terms-of-service](https://finnhub.io/terms-of-service) |

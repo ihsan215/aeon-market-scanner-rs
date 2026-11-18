@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-18
+
+### Added
+
+- **`market_data` module: aggregated crypto prices** from market data providers (volume-weighted across exchanges), separate from `cex` / `dex`.
+  - The `MarketDataTrait` trait has `get_price` and `get_prices`.
+  - Each result is a `MarketDataPrice`, with price, market cap, 24h volume and change, rank, and the provider's update time.
+  - `market_data::coinmarketcap::CoinMarketCap` is the first provider.
+    - It works **without an API key** through the keyless public API.
+    - `with_api_key` or `from_env()` (`CMC_API_KEY`) switches to your own free-plan limits: 15,000 credits/month, 50 requests/minute.
+    - It sends up to 100 symbols per request.
+    - Because symbols are ambiguous on CoinMarketCap, it picks the active, best-ranked asset per symbol. `get_prices_by_ids` selects exact assets.
+    - `with_convert` sets the quote currency.
+    - No WebSocket: CoinMarketCap offers it only on paid plans.
+- Tests: unit tests use a trimmed live response with look-alike tokens. Live tests in `tests/market_data_coinmarketcap_test.rs` run keyless.
+
 ## [0.11.0] - 2026-11-18
 
 ### Removed (breaking)
