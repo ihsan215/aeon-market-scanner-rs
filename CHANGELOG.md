@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-11-18
+
+### Changed
+
+- Package metadata only, no code changes:
+  - crates.io keywords are now `crypto`, `arbitrage`, `stocks`, `forex` and `market-data`, to cover the stock and fiat modules.
+  - The `cryptography::cryptocurrencies` category is added.
+
 ## [0.10.0] - 2026-11-18
 
 ### Added

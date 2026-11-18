@@ -88,7 +88,7 @@ tokio = { version = "1", features = ["full"] }
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.10.0"
+aeon-market-scanner-rs = "0.10.1"
 ```
 
 Then run `cargo build`.

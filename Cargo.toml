@@ -1,6 +1,6 @@
 [package]
 name = "aeon-market-scanner-rs"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 rust-version = "1.85"
 
@@ -11,8 +11,8 @@ repository = "https://github.com/ihsan215/aeon-market-scanner-rs"
 homepage = "https://aeonfeed.com"
 documentation = "https://docs.rs/aeon-market-scanner-rs"
 
-keywords = ["crypto", "arbitrage", "cex", "dex", "websocket"]
-categories = ["api-bindings", "asynchronous", "finance"]
+keywords = ["crypto", "arbitrage", "stocks", "forex", "market-data"]
+categories = ["api-bindings", "asynchronous", "finance", "cryptography::cryptocurrencies"]
 
 # Keep the published crate lean and explicit.
 include = [
