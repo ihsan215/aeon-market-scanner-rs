@@ -88,7 +88,7 @@ tokio = { version = "1", features = ["full"] }
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.10.1"
+aeon-market-scanner-rs = "0.10.2"
 ```
 
 Then run `cargo build`.
@@ -248,7 +248,7 @@ Symbols are normalised: `brk-b`, `BRK/B` and `BRK.B` are the same ticker, and `E
   aeon-market-scanner-rs = { version = "0.10", features = ["unofficial-yahoo"] }
   ```
 
-> **Licensing:** free plans are for personal or internal use. Showing their data on a public website counts as redistribution and usually needs a commercial plan, and for stocks often exchange display licences.
+> **Licensing:** free plans are for personal or internal use. Showing their data on a public website counts as redistribution and usually needs a commercial plan, and for stocks often exchange display licences. See [Disclaimer](#disclaimer) for each provider's terms.
 
 ### 6. Try it
 
@@ -609,6 +609,31 @@ println!("OKX fee (generic) = {} ({}%)", okx_fee, okx_fee * 100.0);
 - **Symbols**: most examples use common `BASEQUOTE` format like `BTCUSDT`. Some exchanges may require different formatting internally; the crate normalizes per-exchange.
 - **WebSocket streams**: intended for continuous feeds. When the receiver ends (`None`), the underlying connection has closed (and may reconnect if `reconnect_attempts` > 0).
 - **Pool listener**: requires a WebSocket RPC URL (e.g. from Alchemy, Infura, or a chain node). Block delivery depends on the RPC; block numbers may not be consecutive.
+
+## Disclaimer
+
+- **Not affiliated.** This project is not affiliated with, endorsed by or sponsored by any exchange or data provider it connects to. Exchange and provider names are trademarks of their respective owners and are used only to say which API a module talks to.
+- **No data is distributed by this crate.** It is client code: every request goes from your machine to the provider, under your own account or API key where one is needed. You are bound by each provider's terms.
+- **Your use of the data is your responsibility.** Most providers allow personal or internal use but **prohibit redistribution or public display** without a separate written licence. Examples are showing prices on a public website, re-serving them through your own API, or posting them to public channels. Crediting the source does not replace that licence. Check the terms of every provider you use:
+
+  | Provider | Terms |
+  | --- | --- |
+  | Binance | [binance.com/en/terms](https://www.binance.com/en/terms) |
+  | Coinbase | [Market Data Terms of Use](https://www.coinbase.com/legal/market_data) |
+  | Kraken | [kraken.com/legal](https://www.kraken.com/legal) |
+  | OKX | [OKX API Agreement](https://www.okx.com/help/okx-api-agreement) |
+  | Bybit | [API Terms & Conditions](https://www.bybit.com/en/help-center/article/API-Terms) |
+  | Other exchanges (MEXC, Gate, KuCoin, Bitget, BtcTurk, HTX, Bitfinex, Upbit, Crypto.com) | the API / market data terms on each exchange's website |
+  | KyberSwap | the KyberSwap aggregator API terms |
+  | Alpaca | [alpaca.markets/disclosures](https://alpaca.markets/disclosures) |
+  | Tiingo (stocks and FX) | [api.tiingo.com/documentation](https://api.tiingo.com/documentation) (usage and licensing section) |
+  | Finnhub | [finnhub.io/terms-of-service](https://finnhub.io/terms-of-service) |
+  | ExchangeRate-API | [exchangerate-api.com/terms](https://www.exchangerate-api.com/terms) (attribution required, no redistribution) |
+  | Frankfurter / ECB | [frankfurter.dev](https://frankfurter.dev) · [ECB legal notice](https://www.ecb.europa.eu/home/disclaimer/html/index.en.html) (reuse allowed with the source credited) |
+  | TCMB | [Kullanım Koşulları](https://www.tcmb.gov.tr/wps/wcm/connect/ekonomi/hie/diger/kullanim+kosullari) (commercial use needs written permission) |
+  | Yahoo Finance (`unofficial-yahoo`) | [Yahoo Terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html). The endpoint is undocumented and automated access is not permitted, so use it at your own risk. |
+
+- **No warranty; not financial advice.** Prices can be delayed, incomplete, stale or wrong. Do not rely on them for trading without your own checks. The software is provided "as is" under the Apache License 2.0, without warranties or liability. Trading and arbitrage involve risk of loss; signed MEXC features place real orders with real funds.
 
 ## License
 

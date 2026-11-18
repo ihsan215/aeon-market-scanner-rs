@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-11-18
+
+### Changed
+
+- Documentation only, no code changes. The README has a new **Disclaimer** section:
+  - The project is not affiliated with any exchange or provider.
+  - The crate distributes no data and is client code only.
+  - Users are responsible for each provider's terms. Redistribution and public display usually need a licence, and attribution alone is not enough.
+  - It links to every provider's terms, and states no warranty and that it is not financial advice.
+
 ## [0.10.1] - 2026-11-18
 
 ### Changed
