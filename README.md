@@ -81,14 +81,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aeon-market-scanner-rs = "0.9"
+aeon-market-scanner-rs = "0.10"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Or pin the exact version:
 
 ```toml
-aeon-market-scanner-rs = "0.7.1"
+aeon-market-scanner-rs = "0.10.0"
 ```
 
 Then run `cargo build`.
@@ -124,8 +124,7 @@ Every provider implements one trait per module, so they are interchangeable:
 
 Import the trait together with the provider, otherwise the methods are not in scope.
 
-> These modules are not on crates.io yet. Until the next release, depend on the git branch:
-> `aeon-market-scanner-rs = { git = "https://github.com/ihsan215/aeon-market-scanner-rs", branch = "feat/stocks-and-fiat" }`
+> Available from version 0.10.0.
 
 ### 1. API keys
 
@@ -246,7 +245,7 @@ Symbols are normalised: `brk-b`, `BRK/B` and `BRK.B` are the same ticker, and `E
 - **Yahoo** (`YahooStocks`, `YahooFiat`): no key and near-live, but it uses an **undocumented** endpoint that Yahoo's terms do not permit for automated access, and it can rate limit or break without notice. It is therefore behind an opt-in feature:
 
   ```toml
-  aeon-market-scanner-rs = { version = "0.9", features = ["unofficial-yahoo"] }
+  aeon-market-scanner-rs = { version = "0.10", features = ["unofficial-yahoo"] }
   ```
 
 > **Licensing:** free plans are for personal or internal use. Showing their data on a public website counts as redistribution and usually needs a commercial plan, and for stocks often exchange display licences.
