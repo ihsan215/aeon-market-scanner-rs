@@ -20,6 +20,7 @@
 
 mod cache;
 pub mod exchangerate_api;
+mod fallback;
 pub mod frankfurter;
 pub mod tcmb;
 pub mod tiingo;
@@ -28,6 +29,7 @@ mod types;
 pub mod yahoo;
 
 pub use exchangerate_api::ExchangeRateApi;
+pub use fallback::{FIAT_FALLBACK_DEFAULT_MAX_AGE, FiatFallback};
 pub use frankfurter::Frankfurter;
 pub use tcmb::Tcmb;
 pub use tiingo::TiingoFiat;

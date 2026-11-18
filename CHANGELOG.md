@@ -64,10 +64,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
     - Any "not found" answer (404, or a chart error) is treated as an unknown symbol, so one odd ticker does not abort a batch.
   - docs.rs builds with all features, so the opt-in Yahoo providers are documented.
   - `parse_fiat_pair` and `parse_currency_code` helpers: `EUR/USD`, `EURUSD` and `eur-usd` all parse to `(EUR, USD)`.
+- **Fallback chains: `StockFallback` and `FiatFallback`.**
+  - They try providers in order and return, per symbol, the first live price. Live means `exchange_timestamp` is within `with_max_age`, 15 minutes by default.
+  - On an error, an unknown symbol or a stale price, the next provider is asked, and only for the symbols still missing. If no provider has a live price, the first stale one is returned.
+  - Both implement `StockTrait` / `FiatTrait`, so single and batch calls work.
+  - Build a chain with `new(..).then(..)`, or with `from_env()` to use every provider that has credentials.
+  - Stock chains apply the age limit only during the US regular session, adjusted for DST (`with_age_limit_in_session_only`). This avoids spending fallback quotas while the market is closed.
+  - `FiatFallback` retries a provider's pairs one by one when its batch call fails, so one uncovered pair does not hide the others.
+  - `examples/fallback.rs` shows both chains: `cargo run --example fallback`.
 - Tests:
   - Unit tests for parsing.
   - Live tests in `tests/fiat_frankfurter_test.rs`, `tests/fiat_exchangerate_api_test.rs`, `tests/fiat_tcmb_test.rs`, `tests/fiat_tiingo_test.rs`, `tests/fiat_yahoo_test.rs` and `tests/stocks_yahoo_test.rs`. The Yahoo tests run only with `--features unofficial-yahoo`.
-  - `tests/stocks_alpaca_test.rs` and `tests/stocks_finnhub_tiingo_test.rs`. Each test is skipped when its provider's key is not set.
+  - `tests/stocks_alpaca_test.rs`, `tests/stocks_finnhub_tiingo_test.rs` and `tests/fallback_test.rs`. Each test is skipped when its provider's key is not set.
 
 ## [0.9.1] - 2026-11-12
 

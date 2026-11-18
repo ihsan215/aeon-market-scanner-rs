@@ -61,9 +61,12 @@ pub use scanner::{ArbitrageOpportunity, ArbitrageScanner, PriceData};
 
 #[cfg(feature = "unofficial-yahoo")]
 pub use fiat::YahooFiat;
-pub use fiat::{ExchangeRateApi, FiatProvider, FiatRate, FiatTrait, Frankfurter, Tcmb, TiingoFiat};
+pub use fiat::{
+    ExchangeRateApi, FiatFallback, FiatProvider, FiatRate, FiatTrait, Frankfurter, Tcmb, TiingoFiat,
+};
 #[cfg(feature = "unofficial-yahoo")]
 pub use stocks::YahooStocks;
 pub use stocks::{
-    Alpaca, AlpacaFeed, Finnhub, SP500_SYMBOLS, StockPrice, StockProvider, StockTrait, Tiingo,
+    Alpaca, AlpacaFeed, Finnhub, SP500_SYMBOLS, StockFallback, StockPrice, StockProvider,
+    StockTrait, Tiingo,
 };

@@ -14,6 +14,7 @@
 //! | `YahooStocks` (feature `unofficial-yahoo`) | no | last price | no | unofficial, may rate limit |
 
 pub mod alpaca;
+pub(crate) mod fallback;
 pub mod finnhub;
 pub mod sp500;
 pub mod tiingo;
@@ -22,6 +23,7 @@ mod types;
 pub mod yahoo;
 
 pub use alpaca::{ALPACA_KEY_ID_ENV, ALPACA_SECRET_KEY_ENV, Alpaca, AlpacaFeed};
+pub use fallback::{STOCK_FALLBACK_DEFAULT_MAX_AGE, StockFallback};
 pub use finnhub::{FINNHUB_API_KEY_ENV, Finnhub};
 pub use sp500::{SP500_SYMBOLS, SP500_SYMBOLS_AS_OF};
 pub use tiingo::{TIINGO_API_TOKEN_ENV, Tiingo};
